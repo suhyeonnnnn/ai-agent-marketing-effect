@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { CONDITIONS, MODELS, PRODUCTS, PRODUCT_REVIEWS, type Condition } from "@/lib/products";
 import type { Study2Result, ToolCall } from "@/lib/agent";
+import { getApiKeys } from "@/lib/api-keys";
 
 const STUDY2_CONDITIONS: Condition[] = ["control", "scarcity", "social_proof", "urgency", "authority", "price_anchoring"];
 
@@ -553,8 +554,8 @@ export default function Study2Dashboard() {
               nudgeSurfaces: [
                 ...(nudgeSearch ? ["search"] : []),
                 ...(nudgeDetail ? ["detail"] : []),
-                ...(nudgeCompare ? ["compare"] : []),
               ],
+              apiKeys: getApiKeys(),
             }),
           });
           const data = await res.json();

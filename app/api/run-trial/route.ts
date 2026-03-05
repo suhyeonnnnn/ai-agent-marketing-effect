@@ -26,7 +26,13 @@ export async function POST(req: NextRequest) {
     enableManipCheck = true,
     temperature = 1.0,
     seed: explicitSeed,
+    apiKeys = {},
   } = body;
+
+  // API keys: use from request body, fallback to env
+  const openaiKey = apiKeys.openai || process.env.OPENAI_API_KEY || "";
+  const anthropicKey = apiKeys.anthropic || process.env.ANTHROPIC_API_KEY || "";
+  const geminiKey = apiKeys.gemini || process.env.GEMINI_API_KEY || "";
 
   const start = Date.now();
 
@@ -49,7 +55,7 @@ export async function POST(req: NextRequest) {
     const userPrompt = buildUserPrompt(promptType, inputMode as InputMode, productsJson, productsText, productsHtml);
 
     // ── 1. Main choice call ──
-    const mainResult = await callModel(model, systemPrompt, userPrompt, inputMode, screenshotBase64, temperature);
+    const mainResult = await callModel(model, systemPrompt, userPrompt, inputMode, screenshotBase64, temperature, { openaiKey, anthropicKey, geminiKey });
 
     const parsed = parseAgentResponse(mainResult.text, shuffled);
 
@@ -57,7 +63,7 @@ export async function POST(req: NextRequest) {
     let manipulationCheck: ManipulationCheck | null = null;
     if (enableManipCheck && condition !== "control") {
       try {
-        const checkResult = await callModel(model, systemPrompt, MANIPULATION_CHECK_PROMPT, "text_flat", undefined, 0);
+        const checkResult = await callModel(model, systemPrompt, MANIPULATION_CHECK_PROMPT, "text_flat", undefined, 0, { openaiKey, anthropicKey, geminiKey });
 
         manipulationCheck = parseManipulationCheck(checkResult.text, targetId);
         mainResult.inputTokens += checkResult.inputTokens;
@@ -120,19 +126,27 @@ interface LLMResult {
   outputTokens: number;
 }
 
+interface ApiKeys {
+  openaiKey: string;
+  anthropicKey: string;
+  geminiKey: string;
+}
+
 function callModel(
   model: string, system: string, user: string,
   inputMode: string, screenshotBase64?: string, temperature = 1.0,
+  keys: ApiKeys = { openaiKey: "", anthropicKey: "", geminiKey: "" },
 ): Promise<LLMResult> {
-  if (model.startsWith("claude")) return callAnthropic(model, system, user, inputMode, screenshotBase64, temperature);
-  if (model.startsWith("gemini")) return callGemini(model, system, user, inputMode, screenshotBase64, temperature);
-  return callOpenAI(model, system, user, inputMode, screenshotBase64, temperature);
+  if (model.startsWith("claude")) return callAnthropic(model, system, user, inputMode, screenshotBase64, temperature, keys.anthropicKey);
+  if (model.startsWith("gemini")) return callGemini(model, system, user, inputMode, screenshotBase64, temperature, keys.geminiKey);
+  return callOpenAI(model, system, user, inputMode, screenshotBase64, temperature, keys.openaiKey);
 }
 
 async function callOpenAI(
   model: string, system: string, user: string,
-  inputMode: string, screenshotBase64?: string, temperature = 1.0,
+  inputMode: string, screenshotBase64?: string, temperature = 1.0, apiKey = "",
 ): Promise<LLMResult> {
+  const key = apiKey || process.env.OPENAI_API_KEY || "";
   const messages: any[] = [{ role: "system", content: system }];
   if (inputMode === "screenshot" && screenshotBase64) {
     messages.push({
@@ -148,7 +162,7 @@ async function callOpenAI(
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({ model, messages, temperature, max_tokens: 2048 }),
   });
   const data = await res.json();
@@ -162,8 +176,9 @@ async function callOpenAI(
 
 async function callAnthropic(
   model: string, system: string, user: string,
-  inputMode: string, screenshotBase64?: string, temperature = 1.0,
+  inputMode: string, screenshotBase64?: string, temperature = 1.0, apiKey = "",
 ): Promise<LLMResult> {
+  const key = apiKey || process.env.ANTHROPIC_API_KEY || "";
   const content: any[] = [];
   if (inputMode === "screenshot" && screenshotBase64) {
     content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: screenshotBase64 } });
@@ -174,7 +189,7 @@ async function callAnthropic(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
+      "x-api-key": key,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({ model, system, messages: [{ role: "user", content }], temperature, max_tokens: 2048 }),
@@ -190,8 +205,9 @@ async function callAnthropic(
 
 async function callGemini(
   model: string, system: string, user: string,
-  inputMode: string, screenshotBase64?: string, temperature = 1.0,
+  inputMode: string, screenshotBase64?: string, temperature = 1.0, apiKey = "",
 ): Promise<LLMResult> {
+  const key = apiKey || process.env.GEMINI_API_KEY || "";
   const parts: any[] = [];
   if (inputMode === "screenshot" && screenshotBase64) {
     parts.push({ inlineData: { mimeType: "image/jpeg", data: screenshotBase64 } });
@@ -199,7 +215,7 @@ async function callGemini(
   parts.push({ text: user });
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

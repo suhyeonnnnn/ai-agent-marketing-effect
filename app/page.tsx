@@ -43,10 +43,10 @@ export default function Home() {
             <p className="text-sm text-gray-600 mb-3">Multi-step Browsing Agent</p>
             <p className="text-xs text-gray-400 leading-relaxed">
               6 conditions via tool-use API.
-              Agent searches, views, reads reviews, compares, and selects.
+              Agent searches, views, reads reviews, and selects.
             </p>
             <div className="mt-4 flex flex-wrap gap-1">
-              {["search", "filter_by", "view_product", "read_reviews", "compare", "select"].map((t) => (
+              {["search", "filter_by", "view_product", "read_reviews", "select"].map((t) => (
                 <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">{t}</span>
               ))}
             </div>
@@ -55,6 +55,7 @@ export default function Home() {
         </div>
 
         <div className="flex justify-center gap-4 mt-8">
+          <Link href="/settings" className="text-xs text-gray-400 hover:text-gray-600">🔑 API Key Settings</Link>
           <Link href="/stimulus" className="text-xs text-gray-400 hover:text-gray-600">🖼 Stimulus Preview</Link>
           <Link href="/results" className="text-xs text-gray-400 hover:text-gray-600">📊 Results Analysis</Link>
         </div>

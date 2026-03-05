@@ -94,6 +94,7 @@ export async function runStudy2Trial(
   nudgeSurfaces: NudgeSurface[] = ["search", "detail"],
   inputMode: "text_json" | "text_flat" | "html" | "screenshot" = "text_json",
   onStep?: (step: ToolCall) => void,
+  apiKeys: { openai: string; anthropic: string; gemini: string } = { openai: "", anthropic: "", gemini: "" },
 ): Promise<Study2Result> {
   const start = Date.now();
   const seed = generateSeed(trialId);
@@ -136,11 +137,11 @@ export async function runStudy2Trial(
     // Call model
     let response: ModelResponse;
     if (isAnthropic) {
-      response = await callAnthropic(model, SYSTEM_PROMPT, messages, temperature);
+      response = await callAnthropic(model, SYSTEM_PROMPT, messages, temperature, apiKeys.anthropic);
     } else if (isGemini) {
-      response = await callGemini(model, SYSTEM_PROMPT, messages, temperature);
+      response = await callGemini(model, SYSTEM_PROMPT, messages, temperature, apiKeys.gemini);
     } else {
-      response = await callOpenAI(model, messages, temperature);
+      response = await callOpenAI(model, messages, temperature, apiKeys.openai);
     }
 
     totalInput += response.inputTokens;
@@ -351,10 +352,11 @@ interface ModelResponse {
   outputTokens: number;
 }
 
-async function callOpenAI(model: string, messages: any[], temperature: number): Promise<ModelResponse> {
+async function callOpenAI(model: string, messages: any[], temperature: number, apiKey = ""): Promise<ModelResponse> {
+  const key = apiKey || process.env.OPENAI_API_KEY || "";
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({ model, messages, tools: TOOL_DEFINITIONS, temperature, max_tokens: 2048 }),
   });
   const data = await res.json();
@@ -376,12 +378,13 @@ async function callOpenAI(model: string, messages: any[], temperature: number): 
   };
 }
 
-async function callAnthropic(model: string, system: string, messages: any[], temperature: number): Promise<ModelResponse> {
+async function callAnthropic(model: string, system: string, messages: any[], temperature: number, apiKey = ""): Promise<ModelResponse> {
+  const key = apiKey || process.env.ANTHROPIC_API_KEY || "";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
+      "x-api-key": key,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({ model, system, messages, tools: TOOL_DEFINITIONS_ANTHROPIC, temperature, max_tokens: 4096 }),
@@ -411,7 +414,8 @@ const TOOL_DEFINITIONS_GEMINI = [{
   })),
 }];
 
-async function callGemini(model: string, system: string, messages: any[], temperature: number): Promise<ModelResponse> {
+async function callGemini(model: string, system: string, messages: any[], temperature: number, apiKey = ""): Promise<ModelResponse> {
+  const key = apiKey || process.env.GEMINI_API_KEY || "";
   // Convert OpenAI-style messages to Gemini contents format
   const contents = messages
     .filter((m: any) => m.role !== "system")
@@ -462,7 +466,7 @@ async function callGemini(model: string, system: string, messages: any[], temper
     });
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

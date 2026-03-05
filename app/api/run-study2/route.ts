@@ -12,12 +12,17 @@ export async function POST(req: NextRequest) {
     condition = "control" as Condition,
     model = "gpt-4o-mini",
     temperature = 1.0,
-    nudgeSurfaces = ["search", "detail", "compare"],
+    nudgeSurfaces = ["search", "detail"],
     inputMode = "text_json",
+    apiKeys = {},
   } = body;
 
   try {
-    const result = await runStudy2Trial(trialId, condition, model, temperature, nudgeSurfaces, inputMode);
+    const result = await runStudy2Trial(trialId, condition, model, temperature, nudgeSurfaces, inputMode, undefined, {
+      openai: apiKeys.openai || process.env.OPENAI_API_KEY || "",
+      anthropic: apiKeys.anthropic || process.env.ANTHROPIC_API_KEY || "",
+      gemini: apiKeys.gemini || process.env.GEMINI_API_KEY || "",
+    });
 
     // Server-side auto-save
     appendTrial({ study: 2, ...result });

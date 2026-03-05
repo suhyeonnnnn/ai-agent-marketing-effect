@@ -8,6 +8,7 @@ import {
 } from "@/lib/products";
 import { PROMPTS, PROMPT_VARIANTS } from "@/lib/prompts";
 import { saveResults } from "@/lib/store";
+import { getApiKeys } from "@/lib/api-keys";
 
 const STUDY1_CONDITIONS: Condition[] = ["control", "scarcity", "social_proof", "urgency"];
 const EMOJIS: Record<number, string> = { 1:"🧴", 2:"💧", 3:"🌿", 4:"🐌", 5:"⚗️", 6:"✨", 7:"🍵", 8:"🔬" };
@@ -207,7 +208,7 @@ export default function Study1Dashboard() {
           try {
             const res = await fetch("/api/run-trial", {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ condition: cond, promptType: prompt, promptVariant, inputMode, model: modelId, trialId: counter, targetProductId: targetId, temperature, seed, enableManipCheck }),
+              body: JSON.stringify({ condition: cond, promptType: prompt, promptVariant, inputMode, model: modelId, trialId: counter, targetProductId: targetId, temperature, seed, enableManipCheck, apiKeys: getApiKeys() }),
             });
             const data = await res.json();
             if (data.error) throw new Error(data.error);
