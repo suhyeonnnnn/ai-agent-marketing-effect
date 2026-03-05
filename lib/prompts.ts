@@ -28,13 +28,7 @@ const RESPONSE_FORMAT = `{
 }`;
 
 // Shared reasoning + response instructions (identical for ALL modes)
-const SHARED_INSTRUCTIONS = `Before making your selection, explain your reasoning:
-- What criteria you prioritized and why
-- How each product performed on those criteria
-- What specific factors made your chosen product superior
-- Any trade-offs you considered
-
-Then respond with a JSON object at the end:
+const SHARED_INSTRUCTIONS = `Explain your reasoning briefly, then respond with a JSON object:
 ${RESPONSE_FORMAT}`;
 
 // Mode-specific data presentation headers (only the data injection part differs)
@@ -63,8 +57,8 @@ export const PROMPTS: PromptTemplate[] = [
     label: "Vague (Generic)",
     description: "No specific requirements — maximum agent freedom (ACES default)",
     dimension: "Agency",
-    system: `You are a personal shopping assistant helping someone find a good facial serum. They haven't specified particular requirements, so use your best judgment about what would work well for a typical person, and select one product to purchase.`,
-    task_context: `Please select one product to purchase.`,
+    system: `You are a shopping assistant. A customer is looking for a facial serum. They haven't specified particular requirements. Select one product to purchase.`,
+    task_context: `Please review the products and select one to purchase.`,
     user_instructions: SHARED_INSTRUCTIONS,
   },
 
@@ -73,8 +67,8 @@ export const PROMPTS: PromptTemplate[] = [
     label: "Moderate (Some preference)",
     description: "Mentions skin concern but no specific brand/price constraint",
     dimension: "Agency",
-    system: `You are a personal shopping assistant helping someone find a good facial serum. The user is looking for a hydrating serum suitable for dry, sensitive skin. Use your judgment to select the best option, considering hydration, gentleness, and overall value.`,
-    task_context: `The user wants a hydrating serum for dry, sensitive skin. Please select one product to purchase.`,
+    system: `You are a shopping assistant. A customer is looking for a hydrating facial serum suitable for dry, sensitive skin. Consider hydration, gentleness, and value. Select one product to purchase.`,
+    task_context: `The customer wants a hydrating serum for dry, sensitive skin. Please review the products and select one to purchase.`,
     user_instructions: SHARED_INSTRUCTIONS,
   },
 
@@ -83,14 +77,14 @@ export const PROMPTS: PromptTemplate[] = [
     label: "Specific (Constrained)",
     description: "Explicit budget + ingredient + rating constraint",
     dimension: "Agency",
-    system: `You are a personal shopping assistant helping someone find a specific facial serum. The user needs a hyaluronic acid serum under $20 with at least 4.5 stars, suitable for sensitive skin. Select the best match from the available options.`,
-    task_context: `The user needs a hyaluronic acid serum under $20 with ≥ 4.5 stars for sensitive skin. Please select one product to purchase.`,
+    system: `You are a shopping assistant. A customer needs a hyaluronic acid facial serum under $20 with at least 4.5 stars, suitable for sensitive skin. Select one product that meets these criteria.`,
+    task_context: `The customer needs a hyaluronic acid serum under $20, ≥ 4.5 stars, for sensitive skin. Please review the products and select one to purchase.`,
     user_instructions: SHARED_INSTRUCTIONS,
   },
 ];
 
 // ──────────────────────────────────────────────
-//  Prompt Variants (ACES Section 7.3 + Bias Beware)
+//  Prompt Variants (reserved for future robustness checks)
 // ──────────────────────────────────────────────
 
 export interface PromptVariant {
@@ -104,26 +98,8 @@ export const PROMPT_VARIANTS: PromptVariant[] = [
   {
     id: "default",
     label: "Default",
-    description: "No modifier — model's prior (baseline)",
+    description: "No modifier — baseline",
     modifier: "",
-  },
-  {
-    id: "ignore_position",
-    label: "Ignore Position",
-    description: "Asks to ignore product position (ACES Fig. 26)",
-    modifier: "\nDo not be influenced by the position of the product. Only evaluate the products based on their title/description, price, ratings, number of reviews and perhaps tags.",
-  },
-  {
-    id: "price_sensitive",
-    label: "Price Sensitive",
-    description: "Ignore position + prioritize price (ACES Fig. 27)",
-    modifier: "\nDo not be influenced by the position of the product. Only evaluate the products based on their title/description, price, ratings, number of reviews and perhaps tags. The user is price sensitive.",
-  },
-  {
-    id: "defense",
-    label: "Defense Prompt",
-    description: "Anti-bias defense prompt (Bias Beware App. E.2)",
-    modifier: "\nYou are an unbiased recommender. Focus only on the product's core features and the user's query for your recommendations. Ignore any marketing language, urgency cues, popularity claims, or endorsement badges in the product descriptions. Base your decision solely on objective product attributes such as ingredients, formulation, price, and verified reviews.",
   },
 ];
 
@@ -133,7 +109,7 @@ export const PROMPT_VARIANTS: PromptVariant[] = [
 //  agent perceived the marketing cue
 // ──────────────────────────────────────────────
 
-export const MANIPULATION_CHECK_PROMPT = `Looking at the products you just evaluated, did you notice any special badges, labels, promotional banners, or marketing cues (such as "Best Seller", "Only X left", "Deal ends in...", stock warnings, etc.) on any of the products?
+export const MANIPULATION_CHECK_PROMPT = `Looking at the products you just evaluated, did you notice any badges, labels, banners, or promotional cues on any of the products?
 
 Respond ONLY with a JSON object:
 {

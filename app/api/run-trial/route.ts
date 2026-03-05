@@ -49,10 +49,7 @@ export async function POST(req: NextRequest) {
     const userPrompt = buildUserPrompt(promptType, inputMode as InputMode, productsJson, productsText, productsHtml);
 
     // ── 1. Main choice call ──
-    const isAnthropic = model.startsWith("claude");
-    const mainResult = isAnthropic
-      ? await callAnthropic(model, systemPrompt, userPrompt, inputMode, screenshotBase64, temperature)
-      : await callOpenAI(model, systemPrompt, userPrompt, inputMode, screenshotBase64, temperature);
+    const mainResult = await callModel(model, systemPrompt, userPrompt, inputMode, screenshotBase64, temperature);
 
     const parsed = parseAgentResponse(mainResult.text, shuffled);
 
@@ -60,9 +57,7 @@ export async function POST(req: NextRequest) {
     let manipulationCheck: ManipulationCheck | null = null;
     if (enableManipCheck && condition !== "control") {
       try {
-        const checkResult = isAnthropic
-          ? await callAnthropic(model, systemPrompt, MANIPULATION_CHECK_PROMPT, "text_flat", undefined, 0)
-          : await callOpenAI(model, systemPrompt, MANIPULATION_CHECK_PROMPT, "text_flat", undefined, 0);
+        const checkResult = await callModel(model, systemPrompt, MANIPULATION_CHECK_PROMPT, "text_flat", undefined, 0);
 
         manipulationCheck = parseManipulationCheck(checkResult.text, targetId);
         mainResult.inputTokens += checkResult.inputTokens;
@@ -88,8 +83,12 @@ export async function POST(req: NextRequest) {
       chosenProduct: parsed.chosenProduct,
       chosenBrand: parsed.chosenBrand,
       chosenPosition: parsed.chosenPosition,
+      chosenPrice: parsed.chosenPrice,
+      chosenRating: parsed.chosenRating,
       choseTarget: parsed.chosenProductId === targetId,
       reasoning: parsed.reasoning,
+      systemPrompt,
+      userPrompt,
       rawResponse: mainResult.text,
       latencySec: Math.round((Date.now() - start) / 100) / 10,
       inputTokens: mainResult.inputTokens,
@@ -119,6 +118,15 @@ interface LLMResult {
   text: string;
   inputTokens: number;
   outputTokens: number;
+}
+
+function callModel(
+  model: string, system: string, user: string,
+  inputMode: string, screenshotBase64?: string, temperature = 1.0,
+): Promise<LLMResult> {
+  if (model.startsWith("claude")) return callAnthropic(model, system, user, inputMode, screenshotBase64, temperature);
+  if (model.startsWith("gemini")) return callGemini(model, system, user, inputMode, screenshotBase64, temperature);
+  return callOpenAI(model, system, user, inputMode, screenshotBase64, temperature);
 }
 
 async function callOpenAI(
@@ -180,6 +188,40 @@ async function callAnthropic(
   };
 }
 
+async function callGemini(
+  model: string, system: string, user: string,
+  inputMode: string, screenshotBase64?: string, temperature = 1.0,
+): Promise<LLMResult> {
+  const parts: any[] = [];
+  if (inputMode === "screenshot" && screenshotBase64) {
+    parts.push({ inlineData: { mimeType: "image/jpeg", data: screenshotBase64 } });
+  }
+  parts.push({ text: user });
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts }],
+        generationConfig: { temperature, maxOutputTokens: 2048 },
+      }),
+    },
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+
+  const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ?? "";
+  const usage = data.usageMetadata ?? {};
+  return {
+    text,
+    inputTokens: usage.promptTokenCount ?? 0,
+    outputTokens: usage.candidatesTokenCount ?? 0,
+  };
+}
+
 // ──────────────────────────────────────────────
 //  Response Parsers
 // ──────────────────────────────────────────────
@@ -196,6 +238,8 @@ function parseAgentResponse(raw: string, orderedProducts: any[]) {
         chosenBrand: parsed.chosen_brand || product?.brand || "Unknown",
         chosenPosition: num,
         chosenProductId: product?.id ?? 0,
+        chosenPrice: product?.price ?? 0,
+        chosenRating: product?.rating ?? 0,
         reasoning: parsed.reasoning || "",
       };
     }
@@ -209,6 +253,8 @@ function parseAgentResponse(raw: string, orderedProducts: any[]) {
         chosenBrand: orderedProducts[i].brand,
         chosenPosition: i + 1,
         chosenProductId: orderedProducts[i].id,
+        chosenPrice: orderedProducts[i].price ?? 0,
+        chosenRating: orderedProducts[i].rating ?? 0,
         reasoning: raw.slice(0, 200),
       };
     }
@@ -219,6 +265,8 @@ function parseAgentResponse(raw: string, orderedProducts: any[]) {
     chosenBrand: "Unknown",
     chosenPosition: 0,
     chosenProductId: 0,
+    chosenPrice: 0,
+    chosenRating: 0,
     reasoning: raw.slice(0, 200),
   };
 }

@@ -407,7 +407,23 @@ export function productsToHTML(
 </div>`;
   });
 
-  return `<div class="product-grid">
+  return `<style>
+.product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 1200px; font-family: Arial, sans-serif; }
+.product-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fff; }
+.product-card img { width: 100%; height: 180px; object-fit: contain; }
+.brand { color: #565959; font-size: 12px; text-transform: uppercase; }
+.product-name { font-size: 14px; margin: 4px 0; color: #0F1111; }
+.price { font-size: 18px; font-weight: bold; color: #0F1111; }
+.rating { color: #FFA41C; font-size: 13px; }
+.tag { display: inline-block; background: #f0f0f0; border-radius: 4px; padding: 2px 6px; font-size: 11px; margin: 2px; }
+.badge { background: #CC0C39; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin: 6px 0; }
+.badge.social-proof { background: #232F3E; }
+.badge.urgency { background: #B12704; }
+.badge.authority { background: #067D62; }
+.badge.price-anchoring { background: #CC0C39; }
+.marketing-cue { display: block; color: #565959; font-size: 12px; margin-top: 4px; }
+</style>
+<div class="product-grid">
 ${cards.join("\n")}
 </div>`;
 }
@@ -498,6 +514,9 @@ const COST_PER_1K: Record<string, { input: number; output: number }> = {
   "gpt-4o-mini":                { input: 0.00015, output: 0.0006 },
   "claude-sonnet-4-5-20250929": { input: 0.003, output: 0.015 },
   "claude-haiku-4-5-20251001":  { input: 0.0008, output: 0.004 },
+  "gemini-2.0-flash":           { input: 0.0001, output: 0.0004 },
+  "gemini-2.5-flash-preview-05-20": { input: 0.00015, output: 0.0006 },
+  "gemini-2.5-pro-preview-05-06":   { input: 0.00125, output: 0.01 },
 };
 
 export function estimateCost(model: string, inputTokens: number, outputTokens: number): number {

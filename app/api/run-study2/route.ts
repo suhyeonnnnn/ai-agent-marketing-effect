@@ -13,10 +13,11 @@ export async function POST(req: NextRequest) {
     model = "gpt-4o-mini",
     temperature = 1.0,
     nudgeSurfaces = ["search", "detail", "compare"],
+    inputMode = "text_json",
   } = body;
 
   try {
-    const result = await runStudy2Trial(trialId, condition, model, temperature, nudgeSurfaces);
+    const result = await runStudy2Trial(trialId, condition, model, temperature, nudgeSurfaces, inputMode);
 
     // Server-side auto-save
     appendTrial({ study: 2, ...result });

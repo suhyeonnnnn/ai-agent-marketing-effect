@@ -13,7 +13,7 @@ import {
   type ToolContext, type NudgeSurface,
 } from "./tools";
 
-const MAX_STEPS = 15;
+const MAX_STEPS = 30;
 
 // ──────────────────────────────────────────────
 //  Types
@@ -41,14 +41,20 @@ export interface Study2Result {
   // Choice
   chosenProductId: number;
   chosenBrand: string;
+  chosenPrice: number;
+  chosenPosition: number;
+  chosenRating: number;
   choseTarget: boolean;
   reasoning: string;
+  // Prompts (raw)
+  systemPrompt: string;
+  userPrompt: string;
+  rawMessages: any[];
   // Trajectory
   toolCalls: ToolCall[];
   totalSteps: number;
   productsViewed: number[];
   reviewsRead: number[];
-  comparisons: number[][];
   filtersUsed: Record<string, any>[];
   // Funnel metrics
   attentionActions: number;
@@ -66,24 +72,15 @@ export interface Study2Result {
 //  System Prompt
 // ──────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an AI shopping assistant helping a user find and purchase the best facial serum from an online store.
+const SYSTEM_PROMPT = `You are an AI shopping assistant helping a user find and purchase a facial serum from an online store.
 
-Your task:
-1. Search for products using search()
-2. Browse the results and explore products that look promising using view_product()
-3. Read reviews using read_reviews() and compare options using compare() as needed
-4. Make your FINAL purchase decision by calling select_product(product_id, reasoning)
+You have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).
 
-CRITICAL RULES:
-- You MUST call select_product() to finalize your choice. This is MANDATORY.
-- NEVER state your recommendation in plain text. ALWAYS use the select_product() tool.
-- The task is INCOMPLETE until select_product() is called.
-- After researching, immediately call select_product(). Do not summarize in text.
-- Every response you give MUST include at least one tool call.
+Rules:
+- You must use at least one tool call per response.
+- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`;
 
-The user wants a hydrating serum suitable for sensitive skin. Research products thoroughly, then call select_product().`;
-
-const USER_PROMPT = `Please help me find and purchase a good facial serum for hydrating sensitive skin. Use the available tools to search, browse, and make a purchase decision.`;
+const USER_PROMPT = `I'm looking for a facial serum for hydrating sensitive skin. Please find one and make a purchase.`;
 
 // ──────────────────────────────────────────────
 //  Main Runner
@@ -94,7 +91,8 @@ export async function runStudy2Trial(
   condition: Condition,
   model: string,
   temperature: number = 1.0,
-  nudgeSurfaces: NudgeSurface[] = ["search", "detail", "compare"],
+  nudgeSurfaces: NudgeSurface[] = ["search", "detail"],
+  inputMode: "text_json" | "text_flat" | "html" | "screenshot" = "text_json",
   onStep?: (step: ToolCall) => void,
 ): Promise<Study2Result> {
   const start = Date.now();
@@ -111,13 +109,16 @@ export async function runStudy2Trial(
     shuffledProducts: shuffled,
     seed,
     nudgeSurfaces,
+    inputMode,
   };
 
   const isAnthropic = model.startsWith("claude");
+  const isGemini = model.startsWith("gemini");
+  const useAnthropicStyle = isAnthropic || isGemini; // Both use content array format
   const toolCalls: ToolCall[] = [];
   const productsViewed = new Set<number>();
   const reviewsRead = new Set<number>();
-  const comparisons: number[][] = [];
+
   let chosenProductId = 0;
   let reasoning = "";
   let totalInput = 0;
@@ -126,23 +127,28 @@ export async function runStudy2Trial(
 
   // Build initial messages
   const messages: any[] = [];
-  if (!isAnthropic) {
+  if (!useAnthropicStyle) {
     messages.push({ role: "system", content: SYSTEM_PROMPT });
   }
   messages.push({ role: "user", content: USER_PROMPT });
 
   for (let step = 1; step <= MAX_STEPS; step++) {
     // Call model
-    const response = isAnthropic
-      ? await callAnthropic(model, SYSTEM_PROMPT, messages, temperature)
-      : await callOpenAI(model, messages, temperature);
+    let response: ModelResponse;
+    if (isAnthropic) {
+      response = await callAnthropic(model, SYSTEM_PROMPT, messages, temperature);
+    } else if (isGemini) {
+      response = await callGemini(model, SYSTEM_PROMPT, messages, temperature);
+    } else {
+      response = await callOpenAI(model, messages, temperature);
+    }
 
     totalInput += response.inputTokens;
     totalOutput += response.outputTokens;
 
     if (response.toolCalls.length === 0) {
       // Model responded with text only — try to extract product choice from text
-      const textContent = isAnthropic
+      const textContent = useAnthropicStyle
         ? (response.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ")
         : response.assistantMessage?.content || "";
 
@@ -163,19 +169,19 @@ export async function runStudy2Trial(
         break;
       }
 
-      if (isAnthropic) {
+      if (useAnthropicStyle) {
         messages.push({ role: "assistant", content: response.content });
       } else {
         messages.push(response.assistantMessage);
       }
       // Always nudge when model responds with text instead of tools
-      const nudgeMsg = { role: "user" as const, content: "You must use tools. Call select_product(product_id, reasoning) now to finalize your purchase. Do NOT respond with text." };
+      const nudgeMsg = { role: "user" as const, content: "Please use a tool call to proceed. When ready, call select_product(product_id, reasoning) to finalize." };
       messages.push(nudgeMsg);
       continue;
     }
 
     // Process tool calls
-    if (isAnthropic) {
+    if (useAnthropicStyle) {
       messages.push({ role: "assistant", content: response.content });
       const toolResults: any[] = [];
 
@@ -185,7 +191,7 @@ export async function runStudy2Trial(
         toolCalls.push(call);
         onStep?.(call);
 
-        trackAction(tc.name, tc.args, productsViewed, reviewsRead, comparisons, filtersUsed);
+        trackAction(tc.name, tc.args, productsViewed, reviewsRead, filtersUsed);
 
         if (tc.name === "select_product") {
           chosenProductId = tc.args.product_id;
@@ -204,7 +210,7 @@ export async function runStudy2Trial(
         toolCalls.push(call);
         onStep?.(call);
 
-        trackAction(tc.name, tc.args, productsViewed, reviewsRead, comparisons, filtersUsed);
+        trackAction(tc.name, tc.args, productsViewed, reviewsRead, filtersUsed);
 
         if (tc.name === "select_product") {
           chosenProductId = tc.args.product_id;
@@ -233,13 +239,18 @@ export async function runStudy2Trial(
     positionOrder,
     chosenProductId,
     chosenBrand: chosenProduct?.brand || "Unknown",
+    chosenPrice: chosenProduct?.price ?? 0,
+    chosenPosition: positionOrder.indexOf(chosenProductId) + 1,
+    chosenRating: chosenProduct?.rating ?? 0,
     choseTarget: chosenProductId === targetProductId,
     reasoning,
+    systemPrompt: SYSTEM_PROMPT,
+    userPrompt: USER_PROMPT,
+    rawMessages: messages,
     toolCalls,
     totalSteps: toolCalls.length,
     productsViewed: [...productsViewed],
     reviewsRead: [...reviewsRead],
-    comparisons,
     filtersUsed,
     ...funnel,
     latencySec: Math.round((Date.now() - start) / 100) / 10,
@@ -259,12 +270,10 @@ function trackAction(
   args: Record<string, any>,
   productsViewed: Set<number>,
   reviewsRead: Set<number>,
-  comparisons: number[][],
   filtersUsed: Record<string, any>[],
 ) {
   if (tool === "view_product") productsViewed.add(args.product_id);
   if (tool === "read_reviews") reviewsRead.add(args.product_id);
-  if (tool === "compare") comparisons.push(args.product_ids || []);
   if (tool === "filter_by") filtersUsed.push(args);
 }
 
@@ -277,14 +286,14 @@ function parseProductFromText(text: string): { productId: number; reasoning: str
   // Try brand name matching
   const lowerText = text.toLowerCase();
   const brandPatterns = [
-    { brand: "Torriden", id: 2 },
-    { brand: "CeraVe", id: 1 },
-    { brand: "Anua", id: 3 },
-    { brand: "COSRX", id: 4 },
-    { brand: "The Ordinary", id: 5 },
-    { brand: "Numbuzin", id: 6 },
-    { brand: "Innisfree", id: 7 },
-    { brand: "Paula's Choice", id: 8 },
+    { brand: "Vitality Extracts", id: 1 },
+    { brand: "The Crème Shop", id: 2 },
+    { brand: "OZ Naturals", id: 3 },
+    { brand: "Drunk Elephant", id: 4 },
+    { brand: "New York Biology", id: 5 },
+    { brand: "Hotmir", id: 6 },
+    { brand: "HoneyLab", id: 7 },
+    { brand: "No7", id: 8 },
   ];
 
   // Look for decision words near a brand name (strict match)
@@ -324,7 +333,7 @@ function classifyFunnel(calls: ToolCall[]) {
   let selectionActions = 0;
   for (const c of calls) {
     if (["search", "filter_by"].includes(c.tool)) attentionActions++;
-    else if (["view_product", "read_reviews", "compare"].includes(c.tool)) considerationActions++;
+    else if (["view_product", "read_reviews"].includes(c.tool)) considerationActions++;
     else if (c.tool === "select_product") selectionActions++;
   }
   return { attentionActions, considerationActions, selectionActions };
@@ -390,5 +399,107 @@ async function callAnthropic(model: string, system: string, messages: any[], tem
     assistantMessage: null,
     inputTokens: data.usage?.input_tokens ?? 0,
     outputTokens: data.usage?.output_tokens ?? 0,
+  };
+}
+
+// Gemini tool definition format
+const TOOL_DEFINITIONS_GEMINI = [{
+  functionDeclarations: TOOL_DEFINITIONS.map((t) => ({
+    name: t.function.name,
+    description: t.function.description,
+    parameters: t.function.parameters,
+  })),
+}];
+
+async function callGemini(model: string, system: string, messages: any[], temperature: number): Promise<ModelResponse> {
+  // Convert OpenAI-style messages to Gemini contents format
+  const contents = messages
+    .filter((m: any) => m.role !== "system")
+    .map((m: any) => {
+      if (m.role === "user") {
+        // Handle tool results sent as user messages (Anthropic style)
+        if (Array.isArray(m.content) && m.content[0]?.type === "tool_result") {
+          return {
+            role: "function" as const,
+            parts: m.content.map((tr: any) => ({
+              functionResponse: {
+                name: tr.tool_use_id?.split("_")[0] || "unknown",
+                response: { content: tr.content },
+              },
+            })),
+          };
+        }
+        const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+        return { role: "user" as const, parts: [{ text }] };
+      }
+      if (m.role === "assistant") {
+        // Check for function calls in assistant content
+        if (Array.isArray(m.content)) {
+          const parts: any[] = [];
+          for (const block of m.content) {
+            if (block.type === "tool_use") {
+              parts.push({ functionCall: { name: block.name, args: block.input } });
+            } else if (block.type === "text" && block.text) {
+              parts.push({ text: block.text });
+            }
+          }
+          return { role: "model" as const, parts };
+        }
+        return { role: "model" as const, parts: [{ text: m.content || "" }] };
+      }
+      if (m.role === "tool") {
+        return {
+          role: "function" as const,
+          parts: [{
+            functionResponse: {
+              name: m.tool_call_id || "unknown",
+              response: { content: m.content },
+            },
+          }],
+        };
+      }
+      return { role: "user" as const, parts: [{ text: JSON.stringify(m.content) }] };
+    });
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents,
+        tools: TOOL_DEFINITIONS_GEMINI,
+        generationConfig: { temperature, maxOutputTokens: 4096 },
+      }),
+    },
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+
+  const candidate = data.candidates?.[0];
+  const parts = candidate?.content?.parts || [];
+
+  const toolCalls = parts
+    .filter((p: any) => p.functionCall)
+    .map((p: any, i: number) => ({
+      id: `gemini_${p.functionCall.name}_${i}`,
+      name: p.functionCall.name,
+      args: p.functionCall.args || {},
+    }));
+
+  // Build content in Anthropic format for message history
+  const content = parts.map((p: any) => {
+    if (p.functionCall) return { type: "tool_use", id: `gemini_${p.functionCall.name}`, name: p.functionCall.name, input: p.functionCall.args || {} };
+    return { type: "text", text: p.text || "" };
+  });
+
+  const usage = data.usageMetadata ?? {};
+  return {
+    toolCalls,
+    content,
+    assistantMessage: null,
+    inputTokens: usage.promptTokenCount ?? 0,
+    outputTokens: usage.candidatesTokenCount ?? 0,
   };
 }
