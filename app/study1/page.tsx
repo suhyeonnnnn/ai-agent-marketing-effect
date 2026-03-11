@@ -9,8 +9,26 @@ import {
 import { PROMPTS, PROMPT_VARIANTS } from "@/lib/prompts";
 import { saveResults } from "@/lib/store";
 import { getApiKeys } from "@/lib/api-keys";
+import { CATEGORY_LIST, type CategoryId, type CategoryConfig, withLocalImages } from "@/lib/categories";
 
-const STUDY1_CONDITIONS: Condition[] = ["control", "scarcity", "social_proof", "urgency"];
+const STUDY1_CONDITIONS: Condition[] = ["control", "scarcity", "social_proof", "urgency", "authority", "price_anchoring"];
+
+/** Get category-specific badge text, falling back to default CONDITIONS badge */
+function getCategoryBadge(condition: string, condMeta: any, category?: CategoryConfig, product?: any): string {
+  const cm = category?.marketing;
+  if (!cm) return condMeta?.badge || "";
+  switch (condition) {
+    case "social_proof": return cm.socialProofBadge || condMeta?.badge || "";
+    case "authority": return cm.authorityBadge || condMeta?.badge || "";
+    case "price_anchoring": {
+      if (!product) return condMeta?.badge || "";
+      const orig = cm.anchoringOriginalPrice || product.originalPrice || (product.price * 1.2);
+      const pct = Math.round((1 - product.price / orig) * 100);
+      return `Was $${orig.toFixed(2)} \u2192 Now $${product.price.toFixed(2)} (Save ${pct}%)`;
+    }
+    default: return condMeta?.badge || "";
+  }
+}
 const EMOJIS: Record<number, string> = { 1:"🧴", 2:"💧", 3:"🌿", 4:"🐌", 5:"⚗️", 6:"✨", 7:"🍵", 8:"🔬" };
 const COLORS: Record<number, string> = { 1:"#1a6fb0", 2:"#2d8f6f", 3:"#d4763a", 4:"#c94c6e", 5:"#8a8578", 6:"#7b5ea7", 7:"#4a9e6d", 8:"#3a3a5c" };
 
@@ -32,28 +50,24 @@ function StarsLarge({ rating, count }: { rating: number; count?: number }) {
   );
 }
 
-function BadgeTag({ text }: { text: string }) {
-  const isScarcity = text.includes("left in stock") || text.includes("Low Stock");
-  const isSocial = text.includes("Best Seller") || text.includes("viewing");
-  const isUrgency = text.includes("Deal ends") || text.includes("ending");
-  const isAuthority = text.includes("Dermatologist") || text.includes("Clinically");
-  const isPrice = text.includes("Was $") || text.includes("Save") || text.includes("Special Price");
-  const colorCls = isScarcity ? "bg-red-600 text-white" :
-    isSocial ? "bg-orange-500 text-white" :
-    isUrgency ? "bg-yellow-500 text-gray-900" :
-    isAuthority ? "bg-blue-600 text-white" :
-    isPrice ? "bg-green-600 text-white" :
+function BadgeTag({ text, condition }: { text: string; condition?: string }) {
+  const colorCls = condition === "scarcity" ? "bg-red-600 text-white" :
+    condition === "social_proof" ? "bg-orange-500 text-white" :
+    condition === "urgency" ? "bg-yellow-500 text-gray-900" :
+    condition === "authority" ? "bg-blue-600 text-white" :
+    condition === "price_anchoring" ? "bg-green-600 text-white" :
     "bg-gray-700 text-white";
   return <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded ${colorCls}`}>{text}</span>;
 }
 
-function MockProductGrid({ condition, targetId, positionOrder, chosenId }: {
-  condition: Condition; targetId: number; positionOrder: number[]; chosenId?: number;
+function MockProductGrid({ condition, targetId, positionOrder, chosenId, category }: {
+  condition: Condition; targetId: number; positionOrder: number[]; chosenId?: number; category?: CategoryConfig;
 }) {
   const condMeta = CONDITIONS.find(c => c.value === condition);
+  const catProducts = category?.products || PRODUCTS;
   const ordered = positionOrder.length > 0
-    ? positionOrder.map(id => PRODUCTS.find(p => p.id === id)!).filter(Boolean)
-    : PRODUCTS;
+    ? positionOrder.map(id => catProducts.find((p: any) => p.id === id)!).filter(Boolean)
+    : catProducts;
 
   return (
     <div className="flex-1 overflow-auto p-3">
@@ -62,7 +76,7 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId }: {
         <span className="text-sm font-bold tracking-tight">ShopSmart</span>
         <div className="flex-1 bg-gray-800 rounded-md px-3 py-1.5 text-xs text-gray-400 flex items-center gap-1.5">
           <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          hydrating facial serum
+          {category?.searchQuery || "hydrating facial serum"}
         </div>
         <div className="flex items-center gap-3 text-gray-400">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
@@ -92,8 +106,9 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId }: {
           const isTarget = p.id === targetId;
           const isChosen = p.id === chosenId;
           const isPriceAnchoring = isTarget && condition === "price_anchoring";
-          const showBadge = isTarget && condition !== "control" && condition !== "price_anchoring" && condMeta;
-          const price = isPriceAnchoring ? 14.49 : p.price;
+          const showBadge = isTarget && condition !== "control" && condMeta;
+          const anchoringOriginalPrice = category?.marketing?.anchoringOriginalPrice ?? p.originalPrice ?? (p.price * 1.2);
+          const price = p.price;  // ★ Price NEVER changes — anchoring is framing only
 
           return (
             <div key={p.id}
@@ -107,7 +122,7 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId }: {
               )}
               {/* Image */}
               <div className="w-full h-24 rounded-md flex items-center justify-center mb-2 bg-gray-50 overflow-hidden">
-                <img src={p.image} alt={p.name} className="h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).parentElement!.innerHTML = `<span class="text-2xl">${EMOJIS[p.id]}</span>`; }} />
+                <img src={p.image} alt={p.name} className="h-full object-contain" onError={(e) => { const img = e.target as HTMLImageElement; img.style.display = 'none'; const parent = img.parentElement; if (parent) parent.innerHTML = `<span class="text-2xl">${EMOJIS[p.id] || '📦'}</span>`; }} />
               </div>
               {/* Info */}
               <p className="text-[10px] text-gray-400 uppercase tracking-wide">{p.brand}</p>
@@ -125,11 +140,11 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId }: {
               </div>
               <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-[13px] font-bold text-gray-900">${price.toFixed(2)}</span>
-                {isPriceAnchoring && <span className="text-[10px] text-gray-400 line-through">${p.price.toFixed(2)}</span>}
-                {isPriceAnchoring && <span className="text-[9px] font-semibold text-red-600 bg-red-50 px-1 py-0.5 rounded">-{Math.round((1 - 14.49 / p.price) * 100)}%</span>}
+                {isPriceAnchoring && <span className="text-[10px] text-gray-400 line-through">${anchoringOriginalPrice.toFixed(2)}</span>}
+                {isPriceAnchoring && <span className="text-[9px] font-semibold text-green-600 bg-green-50 px-1 py-0.5 rounded">Save {Math.round((1 - p.price / anchoringOriginalPrice) * 100)}%</span>}
               </div>
               {showBadge && (
-                <div className="mt-1.5"><BadgeTag text={`${condition === "scarcity" ? "🔥" : condition === "social_proof" ? "👥" : condition === "urgency" ? "⏰" : ""} ${condMeta.badge}`} /></div>
+                <div className="mt-1.5"><BadgeTag condition={condition} text={`${condition === "scarcity" ? "🔥" : condition === "social_proof" ? "👥" : condition === "urgency" ? "⏰" : condition === "authority" ? "🏆" : condition === "price_anchoring" ? "💰" : ""} ${getCategoryBadge(condition, condMeta, category, p)}`} /></div>
               )}
               <div className="mt-1.5 text-[9px] text-green-600 font-medium">Free Shipping</div>
             </div>
@@ -143,7 +158,7 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId }: {
           <div className="flex items-center gap-2">
             <span className="text-sm">🤖</span>
             <span className="text-xs font-bold text-gray-800">
-              Agent chose: {PRODUCTS.find(p => p.id === chosenId)?.brand || "Unknown"}
+              Agent chose: {catProducts.find((p: any) => p.id === chosenId)?.brand || "Unknown"}
             </span>
             <span className={`text-xs font-bold ml-auto ${chosenId === targetId ? "text-green-600" : "text-red-500"}`}>
               {chosenId === targetId ? "✅ Hit" : "❌ Miss"}
@@ -160,6 +175,8 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId }: {
 // ═══════════════════════════════════════
 
 export default function Study1Dashboard() {
+  const [categoryId, setCategoryId] = useState<CategoryId>("serum");
+  const activeCategory = withLocalImages(CATEGORY_LIST.find(c => c.id === categoryId) || CATEGORY_LIST[0]);
   const [conditions, setConditions] = useState<Condition[]>(["control"]);
   const [promptIds, setPromptIds] = useState<string[]>(["vague"]);
   const [promptVariant, setPromptVariant] = useState("default");
@@ -198,8 +215,9 @@ export default function Study1Dashboard() {
         for (let rep = 0; rep < trialsPerCell; rep++) {
           counter++;
           const seed = generateSeed(counter);
-          const targetId = targetRotation ? pickTargetProduct(seed) : 2;
-          const shuffled = shufflePositions(PRODUCTS, seed);
+          const catProducts = activeCategory.products as any[];
+          const targetId = targetRotation ? pickTargetProduct(seed, catProducts) : catProducts[1]?.id || 2;
+          const shuffled = shufflePositions(catProducts as any, seed);
           const posOrder = shuffled.map(p => p.id);
 
           setProgress({ done: counter - 1, total, current: `${cond} × ${prompt} (${counter}/${total})`, cost: totalCost });
@@ -208,7 +226,7 @@ export default function Study1Dashboard() {
           try {
             const res = await fetch("/api/run-trial", {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ condition: cond, promptType: prompt, promptVariant, inputMode, model: modelId, trialId: counter, targetProductId: targetId, temperature, seed, enableManipCheck, apiKeys: getApiKeys() }),
+              body: JSON.stringify({ condition: cond, promptType: prompt, promptVariant, inputMode, model: modelId, trialId: counter, targetProductId: targetId, temperature, seed, enableManipCheck, apiKeys: getApiKeys(), categoryId }),
             });
             const data = await res.json();
             if (data.error) throw new Error(data.error);
@@ -225,7 +243,7 @@ export default function Study1Dashboard() {
     saveResults(allResults);
     setProgress({ done: total, total, current: "Complete!", cost: totalCost });
     setRunning(false);
-  }, [conditions, promptIds, promptVariant, modelId, inputMode, temperature, trialsPerCell, shuffleEnabled, targetRotation, enableManipCheck, running, totalTrials]);
+  }, [conditions, promptIds, promptVariant, modelId, inputMode, temperature, trialsPerCell, shuffleEnabled, targetRotation, enableManipCheck, running, totalTrials, categoryId, activeCategory]);
 
   const targetHits = results.filter(r => r.choseTarget).length;
   const targetRate = results.length > 0 ? Math.round((targetHits / results.length) * 100) : 0;
@@ -244,6 +262,21 @@ export default function Study1Dashboard() {
       <div className="flex flex-1 overflow-hidden">
         {/* COL 1: Config */}
         <div className="w-52 border-r bg-white overflow-auto shrink-0 p-3 space-y-3">
+          {/* Category Selector */}
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase mb-1.5">Category</p>
+            <div className="space-y-0.5">
+              {CATEGORY_LIST.map(cat => (
+                <button key={cat.id} onClick={() => setCategoryId(cat.id)}
+                  className={`w-full p-1.5 rounded border text-left text-[10px] flex items-center gap-1.5 ${
+                    categoryId === cat.id ? "border-emerald-500 bg-emerald-50 text-emerald-700 font-semibold" : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                  }`}>
+                  <span>{cat.id === "serum" ? "🧴" : cat.id === "smartwatch" ? "⌚" : cat.id === "milk" ? "🥛" : "👗"}</span>
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <p className="text-[10px] font-semibold text-gray-400 uppercase mb-1.5">Conditions</p>
             <div className="space-y-0.5">
@@ -330,8 +363,9 @@ export default function Study1Dashboard() {
           <MockProductGrid
             condition={liveTrial?.condition || conditions[0] || "control"}
             targetId={liveTrial?.targetId || 2}
-            positionOrder={liveTrial?.positionOrder || PRODUCTS.map(p => p.id)}
+            positionOrder={liveTrial?.positionOrder || activeCategory.products.map(p => p.id)}
             chosenId={liveTrial?.chosenId}
+            category={activeCategory}
           />
         </div>
 

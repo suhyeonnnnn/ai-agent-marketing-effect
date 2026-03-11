@@ -13,6 +13,26 @@ import {
   type ToolContext, type NudgeSurface,
 } from "./tools";
 
+// ── Screenshot rendering (lazy-loaded) ──
+let puppeteerBrowser: any = null;
+async function renderToScreenshot(htmlContent: string): Promise<string> {
+  if (!puppeteerBrowser) {
+    const puppeteer = await import("puppeteer");
+    puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
+  }
+  const page = await puppeteerBrowser.newPage();
+  await page.setViewport({ width: 1200, height: 800 });
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:16px;background:#fff;font-family:Arial,sans-serif;">${htmlContent}</body></html>`;
+  await page.setContent(fullHtml, { waitUntil: "networkidle0", timeout: 15000 }).catch(() => {});
+  const screenshot = await page.screenshot({ type: "jpeg", quality: 85, fullPage: true });
+  await page.close();
+  return screenshot.toString("base64");
+}
+
+export async function closeBrowser() {
+  if (puppeteerBrowser) { await puppeteerBrowser.close(); puppeteerBrowser = null; }
+}
+
 const MAX_STEPS = 30;
 
 // ──────────────────────────────────────────────
@@ -72,7 +92,8 @@ export interface Study2Result {
 //  System Prompt
 // ──────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an AI shopping assistant helping a user find and purchase a facial serum from an online store.
+// Default prompts (used when no category override is provided)
+const DEFAULT_SYSTEM_PROMPT = `You are an AI shopping assistant helping a user find and purchase a facial serum from an online store.
 
 You have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).
 
@@ -80,7 +101,27 @@ Rules:
 - You must use at least one tool call per response.
 - When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`;
 
-const USER_PROMPT = `I'm looking for a facial serum for hydrating sensitive skin. Please find one and make a purchase.`;
+const DEFAULT_USER_PROMPT = `I'm looking for a facial serum for hydrating sensitive skin. Please find one and make a purchase.`;
+
+// Category-specific system/user prompts for Study 2
+const CATEGORY_S2_PROMPTS: Record<string, { system: string; user: string }> = {
+  serum: {
+    system: `You are an AI shopping assistant helping a user find and purchase a facial serum from an online store.\n\nYou have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).\n\nRules:\n- You must use at least one tool call per response.\n- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`,
+    user: `I'm looking for a facial serum for hydrating sensitive skin. Please find one and make a purchase.`,
+  },
+  smartwatch: {
+    system: `You are an AI shopping assistant helping a user find and purchase a smartwatch from an online store.\n\nYou have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).\n\nRules:\n- You must use at least one tool call per response.\n- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`,
+    user: `I'm looking for a fitness smartwatch with GPS and heart rate monitoring. Please find one and make a purchase.`,
+  },
+  milk: {
+    system: `You are an AI shopping assistant helping a user find and purchase milk from an online store.\n\nYou have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).\n\nRules:\n- You must use at least one tool call per response.\n- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`,
+    user: `I'm looking for organic whole milk for my family. Please find one and make a purchase.`,
+  },
+  dress: {
+    system: `You are an AI shopping assistant helping a user find and purchase a women's dress from an online store.\n\nYou have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).\n\nRules:\n- You must use at least one tool call per response.\n- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`,
+    user: `I'm looking for a casual midi dress for summer office wear. Please find one and make a purchase.`,
+  },
+};
 
 // ──────────────────────────────────────────────
 //  Main Runner
@@ -95,14 +136,35 @@ export async function runStudy2Trial(
   inputMode: "text_json" | "text_flat" | "html" | "screenshot" = "text_json",
   onStep?: (step: ToolCall) => void,
   apiKeys: { openai: string; anthropic: string; gemini: string } = { openai: "", anthropic: "", gemini: "" },
+  categoryId: string = "serum",
+  agency: string = "moderate",  // ★ NEW: agency level for Study 2
 ): Promise<Study2Result> {
   const start = Date.now();
   const seed = generateSeed(trialId);
-  const targetProductId = pickTargetProduct(seed);
-  const shuffled = shufflePositions(PRODUCTS, seed);
+
+  // Resolve category products
+  let categoryProducts: any[];
+  try {
+    const { CATEGORIES } = await import("./categories");
+    const cat = CATEGORIES[categoryId as keyof typeof CATEGORIES];
+    categoryProducts = cat ? cat.products.map((cp: any) => ({ ...cp, volume: cp.spec })) : PRODUCTS;
+  } catch {
+    categoryProducts = PRODUCTS;
+  }
+
+  const targetProductId = pickTargetProduct(seed, categoryProducts);
+  const shuffled = shufflePositions(categoryProducts as any, seed);
   const positionOrder = shuffled.map((p) => p.id);
-  const targetProduct = PRODUCTS.find((p) => p.id === targetProductId)!;
+  const targetProduct = categoryProducts.find((p: any) => p.id === targetProductId)!;
   const targetPosition = positionOrder.indexOf(targetProductId) + 1;
+
+  // Resolve category marketing cues
+  let catMarketing: any = undefined;
+  try {
+    const { CATEGORIES } = await import("./categories");
+    const cat = CATEGORIES[categoryId as keyof typeof CATEGORIES];
+    catMarketing = cat?.marketing;
+  } catch {}
 
   const toolCtx: ToolContext = {
     condition,
@@ -111,6 +173,8 @@ export async function runStudy2Trial(
     seed,
     nudgeSurfaces,
     inputMode,
+    categoryId,
+    catMarketing,
   };
 
   const isAnthropic = model.startsWith("claude");
@@ -125,6 +189,24 @@ export async function runStudy2Trial(
   let totalInput = 0;
   let totalOutput = 0;
   const filtersUsed: Record<string, any>[] = [];
+  let pendingScreenshots: string[] | null = null;
+
+  // Resolve category-specific prompts with agency support
+  const catPrompts = CATEGORY_S2_PROMPTS[categoryId] || { system: DEFAULT_SYSTEM_PROMPT, user: DEFAULT_USER_PROMPT };
+  // Build system prompt with agency context
+  let agencyContext = "";
+  try {
+    const { CATEGORIES } = await import("./categories");
+    const cat = CATEGORIES[categoryId as keyof typeof CATEGORIES];
+    if (cat?.agencyPrompts) {
+      const agencyKey = agency as keyof typeof cat.agencyPrompts;
+      agencyContext = cat.agencyPrompts[agencyKey] || "";
+    }
+  } catch {}
+  const SYSTEM_PROMPT = agencyContext
+    ? catPrompts.system + `\n\nCustomer request: ${agencyContext}`
+    : catPrompts.system;
+  const USER_PROMPT = catPrompts.user;
 
   // Build initial messages
   const messages: any[] = [];
@@ -154,7 +236,7 @@ export async function runStudy2Trial(
         : response.assistantMessage?.content || "";
 
       // Try to parse product ID from text response
-      const parsed = parseProductFromText(textContent);
+      const parsed = parseProductFromText(textContent, categoryProducts);
       if (parsed.productId > 0) {
         chosenProductId = parsed.productId;
         reasoning = parsed.reasoning || textContent.slice(0, 300);
@@ -162,7 +244,7 @@ export async function runStudy2Trial(
         const syntheticCall: ToolCall = {
           step, tool: "select_product",
           args: { product_id: chosenProductId, reasoning },
-          result: JSON.stringify({ status: "purchased", product_id: chosenProductId, brand: PRODUCTS.find(p => p.id === chosenProductId)?.brand || "Unknown", note: "parsed_from_text" }),
+          result: JSON.stringify({ status: "purchased", product_id: chosenProductId, brand: categoryProducts.find((p: any) => p.id === chosenProductId)?.brand || "Unknown", note: "parsed_from_text" }),
           timestamp: new Date().toISOString(),
         };
         toolCalls.push(syntheticCall);
@@ -199,7 +281,16 @@ export async function runStudy2Trial(
           reasoning = tc.args.reasoning || "";
         }
 
-        toolResults.push({ type: "tool_result", tool_use_id: tc.id, content: result });
+        // Screenshot mode: render HTML tool results as images
+        if (inputMode === "screenshot" && tc.name !== "select_product" && result.includes("<")) {
+          const base64 = await renderToScreenshot(result);
+          toolResults.push({
+            type: "tool_result", tool_use_id: tc.id,
+            content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } }, { type: "text", text: `[Screenshot of ${tc.name} result]` }],
+          });
+        } else {
+          toolResults.push({ type: "tool_result", tool_use_id: tc.id, content: result });
+        }
       }
       messages.push({ role: "user", content: toolResults });
     } else {
@@ -218,14 +309,33 @@ export async function runStudy2Trial(
           reasoning = tc.args.reasoning || "";
         }
 
+        // Screenshot mode for OpenAI: tool response MUST come right after tool_calls
+        // So we put the tool result text first, then append image as a follow-up user message
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
+        if (inputMode === "screenshot" && tc.name !== "select_product" && result.includes("<")) {
+          // Will batch all screenshots and send after all tool responses
+          if (!pendingScreenshots) pendingScreenshots = [];
+          pendingScreenshots.push(result);
+        }
+      }
+
+      // After all tool responses, send pending screenshots as user message
+      if (pendingScreenshots && pendingScreenshots.length > 0) {
+        const imageContent: any[] = [];
+        for (const html of pendingScreenshots) {
+          const base64 = await renderToScreenshot(html);
+          imageContent.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } });
+        }
+        imageContent.push({ type: "text", text: "Above are screenshots of the tool results. Use them to make your decision." });
+        messages.push({ role: "user", content: imageContent });
+        pendingScreenshots = null;
       }
     }
 
     if (chosenProductId > 0) break;
   }
 
-  const chosenProduct = PRODUCTS.find((p) => p.id === chosenProductId);
+  const chosenProduct = categoryProducts.find((p: any) => p.id === chosenProductId);
   const funnel = classifyFunnel(toolCalls);
 
   return {
@@ -279,25 +389,16 @@ function trackAction(
 }
 
 // ── Fallback: parse product choice from text response ──
-function parseProductFromText(text: string): { productId: number; reasoning: string } {
+function parseProductFromText(text: string, products?: any[]): { productId: number; reasoning: string } {
   // Try to find product_id mention
   const idMatch = text.match(/product[_\s]?(?:id)?[:\s]*(?:#)?(\d)/i);
   if (idMatch) return { productId: parseInt(idMatch[1]), reasoning: text.slice(0, 300) };
 
+  // Build brand patterns from provided products (supports any category)
+  const brandPatterns = (products || PRODUCTS).map((p: any) => ({ brand: p.brand, id: p.id }));
+
   // Try brand name matching
   const lowerText = text.toLowerCase();
-  const brandPatterns = [
-    { brand: "Vitality Extracts", id: 1 },
-    { brand: "The Crème Shop", id: 2 },
-    { brand: "OZ Naturals", id: 3 },
-    { brand: "Drunk Elephant", id: 4 },
-    { brand: "New York Biology", id: 5 },
-    { brand: "Hotmir", id: 6 },
-    { brand: "HoneyLab", id: 7 },
-    { brand: "No7", id: 8 },
-  ];
-
-  // Look for decision words near a brand name (strict match)
   const decisionWords = /(?:recommend|choose|select|pick|buy|purchase|go with|best choice|my choice|final choice|would suggest|top pick|winner|ideal)/i;
   for (const { brand, id } of brandPatterns) {
     if (lowerText.includes(brand.toLowerCase())) {

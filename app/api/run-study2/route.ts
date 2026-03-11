@@ -15,19 +15,26 @@ export async function POST(req: NextRequest) {
     nudgeSurfaces = ["search", "detail"],
     inputMode = "text_json",
     apiKeys = {},
+    categoryId = "serum",
+    agency = "moderate",  // ★ Agency support for Study 2
   } = body;
 
   try {
-    const result = await runStudy2Trial(trialId, condition, model, temperature, nudgeSurfaces, inputMode, undefined, {
-      openai: apiKeys.openai || process.env.OPENAI_API_KEY || "",
-      anthropic: apiKeys.anthropic || process.env.ANTHROPIC_API_KEY || "",
-      gemini: apiKeys.gemini || process.env.GEMINI_API_KEY || "",
-    });
+    const result = await runStudy2Trial(
+      trialId, condition, model, temperature, nudgeSurfaces, inputMode, undefined,
+      {
+        openai: apiKeys.openai || process.env.OPENAI_API_KEY || "",
+        anthropic: apiKeys.anthropic || process.env.ANTHROPIC_API_KEY || "",
+        gemini: apiKeys.gemini || process.env.GEMINI_API_KEY || "",
+      },
+      categoryId,
+      agency,  // ★ Pass agency
+    );
 
     // Server-side auto-save
     appendTrial({ study: 2, ...result });
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, agency });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

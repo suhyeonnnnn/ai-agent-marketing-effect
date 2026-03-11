@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { CONDITIONS, MODELS, PRODUCTS, PRODUCT_REVIEWS, type Condition } from "@/lib/products";
+import { CATEGORY_LIST, type CategoryId, withLocalImages } from "@/lib/categories";
 import type { Study2Result, ToolCall } from "@/lib/agent";
 import { getApiKeys } from "@/lib/api-keys";
 
@@ -347,7 +348,7 @@ const PREVIEW_DETAILS: Record<number, { description: string; ingredients: string
 //  Interactive Agent Screen
 // ═══════════════════════════════════════
 
-function AgentScreen({ trajectory, running, runningLabel, selectedConditions }: { trajectory: ToolCall[]; running: boolean; runningLabel: string; selectedConditions: Condition[] }) {
+function AgentScreen({ trajectory, running, runningLabel, selectedConditions, activeCategory }: { trajectory: ToolCall[]; running: boolean; runningLabel: string; selectedConditions: Condition[]; activeCategory: any }) {
   const [previewView, setPreviewView] = useState<"search" | "detail" | "reviews">("search");
   const [previewProductId, setPreviewProductId] = useState<number | null>(null);
 
@@ -388,15 +389,15 @@ function AgentScreen({ trajectory, running, runningLabel, selectedConditions }: 
   }
 
   // Build search data
-  const searchProducts = PRODUCTS.map((p, i) => {
-    const obj: Record<string, any> = { product_id: p.id, position: i + 1, brand: p.brand, name: p.name, volume: p.volume, price: p.price, rating: p.rating, reviews: p.reviews, tags: p.tags, image: p.image };
+  const searchProducts = (activeCategory?.products || PRODUCTS).map((p: any, i: number) => {
+    const obj: Record<string, any> = { product_id: p.id, position: i + 1, brand: p.brand, name: p.name, volume: p.spec || p.volume, price: p.price, rating: p.rating, reviews: p.reviews, image: p.image };
     applyNudge(obj, "search");
     return obj;
   });
-  const searchData = { query: "hydrating facial serum", total_results: 8, sort_by: "recommended", products: searchProducts };
+  const searchData = { query: activeCategory?.label || "products", total_results: 8, sort_by: "recommended", products: searchProducts };
 
   // Build detail data
-  const detailProduct = previewProductId ? PRODUCTS.find(p => p.id === previewProductId) : null;
+  const detailProduct = previewProductId ? (activeCategory?.products || PRODUCTS).find((p: any) => p.id === previewProductId) : null;
   const detailData = detailProduct ? (() => {
     const d = PREVIEW_DETAILS[detailProduct.id] || { description: "", ingredients: "" };
     const obj: Record<string, any> = {
@@ -507,6 +508,8 @@ export default function Study2Dashboard() {
   const [modelId, setModelId] = useState(MODELS[0].id);
   const [temperature, setTemperature] = useState(1.0);
   const [trialsPerCell, setTrialsPerCell] = useState(5);
+  const [categoryId, setCategoryId] = useState<CategoryId>("serum");
+  const activeCategory = withLocalImages(CATEGORY_LIST.find(c => c.id === categoryId) || CATEGORY_LIST[0]);
   const [nudgeSearch, setNudgeSearch] = useState(true);
   const [nudgeDetail, setNudgeDetail] = useState(true);
   const [nudgeCompare, setNudgeCompare] = useState(true);
@@ -555,7 +558,7 @@ export default function Study2Dashboard() {
                 ...(nudgeSearch ? ["search"] : []),
                 ...(nudgeDetail ? ["detail"] : []),
               ],
-              apiKeys: getApiKeys(),
+              apiKeys: getApiKeys(), categoryId,
             }),
           });
           const data = await res.json();
@@ -605,6 +608,15 @@ export default function Study2Dashboard() {
           {/* COL 1: Config */}
           <div className="w-52 border-r bg-white overflow-auto shrink-0 p-3 space-y-3">
             <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase mb-1.5">Category</p>
+              <div className="space-y-0.5 mb-3">
+                {CATEGORY_LIST.map(cat => (
+                  <button key={cat.id} onClick={() => setCategoryId(cat.id as CategoryId)}
+                    className={`w-full p-1.5 rounded border text-left text-[10px] ${categoryId === cat.id ? "border-emerald-500 bg-emerald-50 text-emerald-700 font-semibold" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
               <p className="text-[10px] font-semibold text-gray-400 uppercase mb-1.5">Conditions</p>
               <div className="space-y-0.5">
                 {CONDITIONS.filter(c => STUDY2_CONDITIONS.includes(c.value)).map(c => (
@@ -699,7 +711,7 @@ export default function Study2Dashboard() {
 
           {/* COL 2: Mock Shopping UI (center) */}
           <div className="flex-1 flex flex-col overflow-hidden bg-white">
-            <AgentScreen trajectory={liveTrajectory} running={running} runningLabel={runningLabel} selectedConditions={conditions} />
+            <AgentScreen trajectory={liveTrajectory} running={running} runningLabel={runningLabel} selectedConditions={conditions} activeCategory={activeCategory} />
           </div>
 
           {/* COL 3: Trajectory (right) */}
