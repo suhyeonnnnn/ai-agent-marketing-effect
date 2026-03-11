@@ -14,6 +14,7 @@ import { CATEGORIES, type CategoryId, type CategoryConfig } from "@/lib/categori
 let puppeteerBrowser: any = null;
 async function renderHtmlToScreenshot(htmlContent: string): Promise<string> {
   if (!puppeteerBrowser) {
+    // @ts-ignore - puppeteer not available in Vercel environment
     const puppeteer = await import("puppeteer");
     puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
   }

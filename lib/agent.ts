@@ -17,6 +17,7 @@ import {
 let puppeteerBrowser: any = null;
 async function renderToScreenshot(htmlContent: string): Promise<string> {
   if (!puppeteerBrowser) {
+    // @ts-ignore - puppeteer not available in Vercel environment
     const puppeteer = await import("puppeteer");
     puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
   }
