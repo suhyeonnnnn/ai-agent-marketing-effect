@@ -11,15 +11,17 @@ import { saveResults } from "@/lib/store";
 import { getApiKeys } from "@/lib/api-keys";
 import { CATEGORY_LIST, type CategoryId, type CategoryConfig, withLocalImages } from "@/lib/categories";
 
-const STUDY1_CONDITIONS: Condition[] = ["control", "scarcity", "social_proof", "urgency", "authority", "price_anchoring"];
+const STUDY1_CONDITIONS: Condition[] = ["control", "scarcity", "social_proof_a", "social_proof_b", "urgency", "authority_a", "authority_b", "price_anchoring"];
 
 /** Get category-specific badge text, falling back to default CONDITIONS badge */
 function getCategoryBadge(condition: string, condMeta: any, category?: CategoryConfig, product?: any): string {
   const cm = category?.marketing;
   if (!cm) return condMeta?.badge || "";
   switch (condition) {
-    case "social_proof": return cm.socialProofBadge || condMeta?.badge || "";
-    case "authority": return cm.authorityBadge || condMeta?.badge || "";
+    case "social_proof_a": return cm.socialProofBadgeA || condMeta?.badge || "";
+    case "social_proof_b": return cm.socialProofBadgeB || condMeta?.badge || "";
+    case "authority_a": return cm.authorityBadgeA || condMeta?.badge || "";
+    case "authority_b": return cm.authorityBadgeB || condMeta?.badge || "";
     case "price_anchoring": {
       if (!product) return condMeta?.badge || "";
       const orig = cm.anchoringOriginalPrice || product.originalPrice || (product.price * 1.2);
@@ -52,9 +54,9 @@ function StarsLarge({ rating, count }: { rating: number; count?: number }) {
 
 function BadgeTag({ text, condition }: { text: string; condition?: string }) {
   const colorCls = condition === "scarcity" ? "bg-red-600 text-white" :
-    condition === "social_proof" ? "bg-orange-500 text-white" :
+    condition?.startsWith("social_proof") ? "bg-orange-500 text-white" :
     condition === "urgency" ? "bg-yellow-500 text-gray-900" :
-    condition === "authority" ? "bg-blue-600 text-white" :
+    condition?.startsWith("authority") ? "bg-blue-600 text-white" :
     condition === "price_anchoring" ? "bg-green-600 text-white" :
     "bg-gray-700 text-white";
   return <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded ${colorCls}`}>{text}</span>;
@@ -144,7 +146,7 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId, categor
                 {isPriceAnchoring && <span className="text-[9px] font-semibold text-green-600 bg-green-50 px-1 py-0.5 rounded">Save {Math.round((1 - p.price / anchoringOriginalPrice) * 100)}%</span>}
               </div>
               {showBadge && (
-                <div className="mt-1.5"><BadgeTag condition={condition} text={`${condition === "scarcity" ? "🔥" : condition === "social_proof" ? "👥" : condition === "urgency" ? "⏰" : condition === "authority" ? "🏆" : condition === "price_anchoring" ? "💰" : ""} ${getCategoryBadge(condition, condMeta, category, p)}`} /></div>
+                <div className="mt-1.5"><BadgeTag condition={condition} text={`${condition === "scarcity" ? "🔥" : condition?.startsWith("social_proof") ? "👥" : condition === "urgency" ? "⏰" : condition?.startsWith("authority") ? "🏆" : condition === "price_anchoring" ? "💰" : ""} ${getCategoryBadge(condition, condMeta, category, p)}`} /></div>
               )}
               <div className="mt-1.5 text-[9px] text-green-600 font-medium">Free Shipping</div>
             </div>

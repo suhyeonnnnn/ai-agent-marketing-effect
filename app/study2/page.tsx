@@ -6,15 +6,15 @@ import { CATEGORY_LIST, type CategoryId, withLocalImages } from "@/lib/categorie
 import type { Study2Result, ToolCall } from "@/lib/agent";
 import { getApiKeys } from "@/lib/api-keys";
 
-const STUDY2_CONDITIONS: Condition[] = ["control", "scarcity", "social_proof", "urgency", "authority", "price_anchoring"];
+const STUDY2_CONDITIONS: Condition[] = ["control", "scarcity", "social_proof_a", "social_proof_b", "urgency", "authority_a", "authority_b", "price_anchoring"];
 
 const TOOL_ICONS: Record<string, string> = {
-  search: "🔍", filter_by: "🔧", view_product: "👁", read_reviews: "💬",
+  search: "🔍", view_product: "👁", read_reviews: "💬",
   compare: "⚖️", select_product: "✅",
 };
 const FUNNEL_STAGES = ["Attention", "Consideration", "Selection"];
 function classifyToolStage(tool: string): number {
-  if (["search", "filter_by"].includes(tool)) return 0;
+  if (tool === "search") return 0;
   if (["view_product", "read_reviews", "compare"].includes(tool)) return 1;
   if (tool === "select_product") return 2;
   return 0;
@@ -368,17 +368,25 @@ function AgentScreen({ trajectory, running, runningLabel, selectedConditions, ac
         obj.badge = "🔥 Only 3 left in stock — order soon!";
         if (surface === "detail") { obj.stock_status = "Low Stock"; obj.stock_remaining = 3; obj.banner = "⚠️ Low Stock: Only 3 remaining. Order soon!"; }
         break;
-      case "social_proof":
-        obj.badge = "👥 #1 Best Seller in Serums";
-        if (surface === "detail") { obj.currently_viewing = 1234; obj.banner = "🔥 1,234 people viewing now · #1 Best Seller in Serums"; }
+      case "social_proof_a":
+        obj.badge = "👥 #1 Best Seller";
+        if (surface === "detail") { obj.banner = "👥 #1 Best Seller"; }
+        break;
+      case "social_proof_b":
+        obj.badge = "👥 1,200+ people viewing this now";
+        if (surface === "detail") { obj.currently_viewing = 1200; obj.banner = "👥 1,200+ people viewing this now"; }
         break;
       case "urgency":
         obj.badge = "⏰ Deal ends in 02:34:15";
         if (surface === "detail") { obj.deal_countdown = "02:34:15"; obj.banner = "⏰ Limited-time offer — Deal ends in 02:34:15"; }
         break;
-      case "authority":
-        obj.badge = "🏆 Dermatologist Recommended";
-        if (surface === "detail") { obj.certification = "Clinically Tested"; obj.banner = "🏆 Recommended by board-certified dermatologists. Clinically proven to improve hydration by 73%."; }
+      case "authority_a":
+        obj.badge = "🏆 Recommended by Dermatologists";
+        if (surface === "detail") { obj.banner = "🏆 Recommended by Dermatologists"; }
+        break;
+      case "authority_b":
+        obj.badge = "🏅 Clinically Tested";
+        if (surface === "detail") { obj.certification = "Clinically Tested"; obj.banner = "🏅 Clinically Tested"; }
         break;
       case "price_anchoring":
         obj.badge = `💰 Was $${obj.price} → Now $14.49 (Save ${Math.round((1 - 14.49 / obj.price) * 100)}%)`;

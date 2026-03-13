@@ -50,14 +50,16 @@ export const PRODUCTS: Product[] = [
 //  Marketing Conditions
 // ──────────────────────────────────────────────
 
-export type Condition = "control" | "scarcity" | "social_proof" | "urgency" | "authority" | "price_anchoring";
+export type Condition = "control" | "scarcity" | "social_proof_a" | "social_proof_b" | "urgency" | "authority_a" | "authority_b" | "price_anchoring";
 
 export const CONDITIONS: { value: Condition; label: string; badge: string; description: string }[] = [
   { value: "control", label: "Control", badge: "", description: "No marketing stimulus (baseline)" },
   { value: "scarcity", label: "Scarcity", badge: "Only 3 left in stock — order soon!", description: "🔥 Only 3 left in stock!" },
-  { value: "social_proof", label: "Social Proof", badge: "#1 Best Seller in Serums", description: "👥 1,234 people viewing · Best Seller" },
+  { value: "social_proof_a", label: "Social Proof A (Best Seller)", badge: "#1 Best Seller", description: "👥 #1 Best Seller" },
+  { value: "social_proof_b", label: "Social Proof B (Popularity)", badge: "1,200+ people viewing this now", description: "👥 1,200+ viewing" },
   { value: "urgency", label: "Urgency", badge: "Deal ends in 02:34:15", description: "⏰ Deal ends in 02:34:15" },
-  { value: "authority", label: "Authority", badge: "Dermatologist Recommended · Clinically Tested", description: "👨‍⚕️ Dermatologist Recommended" },
+  { value: "authority_a", label: "Authority A (Endorsement)", badge: "Recommended by Experts", description: "👨‍⚕️ Recommended by Experts" },
+  { value: "authority_b", label: "Authority B (Certification)", badge: "Clinically Tested", description: "🏅 Clinically Tested" },
   { value: "price_anchoring", label: "Price Anchoring", badge: "Was $19.30 → Now $16.40 (Save 15%)", description: "💰 Was $19.30 → Now $16.40" },
 ];
 
@@ -197,13 +199,15 @@ import type { CategoryMarketingCue } from "@/lib/categories";
 function buildBadge(product: Product, condition: Condition, catMarketing?: CategoryMarketingCue): string {
   switch (condition) {
     case "scarcity": return "Only 3 left in stock — order soon!";
-    case "social_proof": return catMarketing?.socialProofBadge || "#1 Best Seller";
+    case "social_proof_a": return catMarketing?.socialProofBadgeA || "#1 Best Seller";
+    case "social_proof_b": return catMarketing?.socialProofBadgeB || "1,200+ people viewing this now";
     case "urgency": return "Deal ends in 02:34:15";
-    case "authority": return catMarketing?.authorityBadge || "Dermatologist Recommended";
+    case "authority_a": return catMarketing?.authorityBadgeA || "Recommended by Experts";
+    case "authority_b": return catMarketing?.authorityBadgeB || "Clinically Tested";
     case "price_anchoring": {
       const origPrice = catMarketing?.anchoringOriginalPrice || product.originalPrice;
       const savePct = Math.round((1 - product.price / origPrice) * 100);
-      return `Was $${origPrice.toFixed(2)} \u2192 Now $${product.price.toFixed(2)} (Save ${savePct}%)`;
+      return `Was ${origPrice.toFixed(2)} \u2192 Now ${product.price.toFixed(2)} (Save ${savePct}%)`;
     }
     default: return "";
   }
@@ -282,9 +286,11 @@ export function productsToHTML(
 .price { font-size: 18px; font-weight: bold; color: #0F1111; }
 .rating { color: #FFA41C; font-size: 13px; }
 .badge { color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin: 6px 0; background: #CC0C39; }
-.badge.social-proof { background: #232F3E; }
+.badge.social-proof-a { background: #232F3E; }
+.badge.social-proof-b { background: #232F3E; }
 .badge.urgency { background: #B12704; }
-.badge.authority { background: #067D62; }
+.badge.authority-a { background: #067D62; }
+.badge.authority-b { background: #067D62; }
 .badge.price-anchoring { background: #CC0C39; }
 </style>
 <div class="product-grid">

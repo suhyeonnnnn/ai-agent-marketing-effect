@@ -62,7 +62,7 @@ if (!OPENAI_KEY) { console.error("❌ OPENAI_API_KEY not found"); process.exit(1
 const MODEL = "gpt-4o-mini";
 const TEMPERATURE = 1.0;
 const REPS = 30;
-const CONDITIONS = ["control", "scarcity", "social_proof", "urgency", "authority", "price_anchoring"];
+const CONDITIONS = ["control", "scarcity", "social_proof_a", "social_proof_b", "urgency", "authority_a", "authority_b", "price_anchoring"];
 const AGENCIES = ["vague", "moderate", "specific"];
 const INPUT_MODES = ["text_json", "text_flat", "html", "screenshot"];
 
@@ -83,9 +83,11 @@ const PRODUCTS = [
 const COND_META = {
   control: { badge: "", descriptionCue: "" },
   scarcity: { badge: "🔥 Only 3 left in stock — order soon!", descriptionCue: "Due to overwhelming demand, this product frequently sells out. Limited stock available." },
-  social_proof: { badge: "👥 1,234 people viewing now · #1 Best Seller in Serums", descriptionCue: "Trusted by 50,000+ skincare enthusiasts. Featured in top beauty blogs and social media." },
+  social_proof_a: { badge: "👥 #1 Best Seller in Facial Serums", descriptionCue: "" },
+  social_proof_b: { badge: "👥 1,200+ people viewing this now", descriptionCue: "" },
   urgency: { badge: "⏰ Deal ends in 02:34:15", descriptionCue: "Limited-time pricing — this special offer won't last. Act now for the best deal." },
-  authority: { badge: "🏆 Dermatologist Recommended · Clinically Tested", descriptionCue: "Recommended by board-certified dermatologists. Clinically proven to improve skin hydration by 73% in 4 weeks." },
+  authority_a: { badge: "🏆 Recommended by Dermatologists", descriptionCue: "" },
+  authority_b: { badge: "🏅 Clinically Tested", descriptionCue: "" },
   price_anchoring: { badge: "💰 Special Price: $14.49 (Save ~12%)", descriptionCue: "Limited-time reduced pricing. Now available at our lowest price ever." },
 };
 
@@ -139,9 +141,9 @@ function buildProductData(products, condition, targetId, mode) {
       if (p.id === targetId && condition !== "control" && cm.badge) {
         obj.badge = cm.badge; obj.description_note = cm.descriptionCue;
         if (condition === "scarcity") obj.stock_remaining = 3;
-        if (condition === "social_proof") obj.currently_viewing = 1234;
+        if (condition === "social_proof_b") obj.currently_viewing = 1200;
         if (condition === "urgency") obj.deal_countdown = "02:34:15";
-        if (condition === "authority") obj.certification = "Board-Certified Dermatologist";
+        if (condition === "authority_b") obj.certification = "Clinically Tested";
         if (condition === "price_anchoring") { obj.original_price = p.price; obj.sale_price = 14.49; }
       }
       return obj;

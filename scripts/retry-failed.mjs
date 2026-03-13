@@ -32,7 +32,7 @@ if (!API_KEY) { console.error("❌ OPENAI_API_KEY not found"); process.exit(1); 
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const MODEL = "gpt-4o-mini";
 const TEMPERATURE = 1.0;
-const CONDITIONS = ["control", "scarcity", "social_proof", "urgency", "authority", "price_anchoring"];
+const CONDITIONS = ["control", "scarcity", "social_proof_a", "social_proof_b", "urgency", "authority_a", "authority_b", "price_anchoring"];
 const AGENCIES = ["vague", "moderate", "specific"];
 const S1_MODES = ["text_json", "text_flat", "html", "screenshot"];
 const S2_MODES = ["text_json", "text_flat", "html", "screenshot"];

@@ -39,7 +39,7 @@ const BASE_URL = "http://localhost:3000";
 const MODEL = "gpt-4o-mini";
 const TEMPERATURE = 1.0;
 const REPS = 30;
-const CONDITIONS = ["control", "scarcity", "social_proof", "urgency", "authority", "price_anchoring"];
+const CONDITIONS = ["control", "scarcity", "social_proof_a", "social_proof_b", "urgency", "authority_a", "authority_b", "price_anchoring"];
 const INPUT_MODES = ["text_json", "text_flat", "html", "screenshot"];
 const NUDGE_SURFACES = ["search", "detail"];
 

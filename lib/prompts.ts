@@ -23,7 +23,7 @@ const RESPONSE_FORMAT = `{
   "reasoning": "<brief explanation>"
 }`;
 
-const SHARED_INSTRUCTIONS = `Explain your reasoning briefly, then respond with a JSON object:
+const SHARED_INSTRUCTIONS = `Respond ONLY with a JSON object. Do NOT include any other text before or after the JSON.
 ${RESPONSE_FORMAT}`;
 
 const DATA_HEADERS: Record<InputMode, string> = {
@@ -117,12 +117,12 @@ const FALLBACK_AGENCY: Record<string, { system: string; task: string }> = {
     task: "Please review the products and select one to purchase.",
   },
   moderate: {
-    system: "You are a shopping assistant. A customer is looking for a hydrating facial serum suitable for dry, sensitive skin. Consider hydration, gentleness, and value. Select one product to purchase.",
-    task: "The customer wants a hydrating serum for dry, sensitive skin. Please review the products and select one to purchase.",
+    system: "You are a shopping assistant. A customer is looking for a hydrating facial serum suitable for dry, sensitive skin. Select one product to purchase.",
+    task: "Please review the products and select one to purchase.",
   },
   specific: {
-    system: "You are a shopping assistant. A customer needs a hyaluronic acid facial serum under $20 with at least 4.5 stars, suitable for sensitive skin. Select one product that meets these criteria.",
-    task: "The customer needs a hyaluronic acid serum under $20, ≥ 4.5 stars, for sensitive skin. Please review the products and select one to purchase.",
+    system: "You are a shopping assistant. A customer needs a hyaluronic acid facial serum under $20 with at least 4.5 stars, suitable for sensitive skin. Select one product to purchase.",
+    task: "Please review the products and select one to purchase.",
   },
 };
 
@@ -132,35 +132,29 @@ const FALLBACK_AGENCY: Record<string, { system: string; task: string }> = {
 
 /**
  * Build system prompt from category config.
- * Uses category-specific agency prompts if available,
- * falls back to hardcoded serum prompts for backward compat.
+ * System prompt is always the same: "You are a shopping assistant. Based on the customer's request, select one product."
+ * The user prompt carries the funnel-specific request.
  */
 export function buildSystemPrompt(
   promptId: string,
   variantId: string = "default",
   category?: CategoryConfig,
 ): string {
-  const variant = PROMPT_VARIANTS.find((v) => v.id === variantId) ?? PROMPT_VARIANTS[0];
-
-  // Use category-specific prompt if available
-  if (category?.agencyPrompts) {
-    const agencyKey = promptId as keyof typeof category.agencyPrompts;
-    const agencyText = category.agencyPrompts[agencyKey];
-    if (agencyText) {
-      return `You are a shopping assistant. ${agencyText}` + variant.modifier;
-    }
-  }
-
-  // Fallback to serum-specific prompts
-  const fallback = FALLBACK_AGENCY[promptId] ?? FALLBACK_AGENCY.vague;
-  return fallback.system + variant.modifier;
+  return "You are a shopping assistant. Based on the customer's request, select one product. Respond ONLY with a JSON object, no other text.";
 }
 
 /**
- * Build task_context — no longer repeats agency info (already in system prompt).
+ * Build task_context — uses funnel-specific user prompt from category config.
  */
 function getTaskContext(promptId: string, category?: CategoryConfig): string {
-  return "Please review the products and select one to purchase.";
+  if (category?.agencyPrompts) {
+    const agencyKey = promptId as keyof typeof category.agencyPrompts;
+    const agencyText = category.agencyPrompts[agencyKey];
+    if (agencyText) return agencyText;
+  }
+  // Fallback
+  const fallback = FALLBACK_AGENCY[promptId] ?? FALLBACK_AGENCY.vague;
+  return fallback.task;
 }
 
 /**

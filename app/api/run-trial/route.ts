@@ -12,15 +12,39 @@ import { CATEGORIES, type CategoryId, type CategoryConfig } from "@/lib/categori
 //  Screenshot rendering (server-side Puppeteer)
 // ──────────────────────────────────────────────
 let puppeteerBrowser: any = null;
+// Pre-fetch external images and inline them as base64 to bypass hotlink protection
+async function inlineExternalImages(html: string): Promise<string> {
+  const imgRegex = /<img([^>]*?)src="(https?:\/\/[^"]+)"([^>]*?)>/g;
+  const matches = [...html.matchAll(imgRegex)];
+  let result = html;
+  await Promise.all(matches.map(async (match) => {
+    try {
+      const res = await fetch(match[2], {
+        headers: { "Referer": "https://www.amazon.com/", "User-Agent": "Mozilla/5.0" }
+      });
+      if (!res.ok) return;
+      const buf = await res.arrayBuffer();
+      const b64 = Buffer.from(buf).toString("base64");
+      const mime = res.headers.get("content-type") || "image/jpeg";
+      result = result.replace(match[2], `data:${mime};base64,${b64}`);
+    } catch {
+      // silently skip failed images
+    }
+  }));
+  return result;
+}
+
 async function renderHtmlToScreenshot(htmlContent: string): Promise<string> {
   if (!puppeteerBrowser) {
     // @ts-ignore - puppeteer not available in Vercel environment
     const puppeteer = await import("puppeteer");
     puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
   }
+  // Inline external images as base64 to avoid hotlink blocking (e.g. Amazon CDN)
+  const inlinedHtml = await inlineExternalImages(htmlContent);
   const page = await puppeteerBrowser.newPage();
   await page.setViewport({ width: 1200, height: 800 });
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:16px;background:#fff;font-family:Arial,sans-serif;">${htmlContent}</body></html>`;
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:16px;background:#fff;font-family:Arial,sans-serif;">${inlinedHtml}</body></html>`;
   await page.setContent(fullHtml, { waitUntil: "networkidle0", timeout: 15000 }).catch(() => {});
   const screenshot = await page.screenshot({ type: "jpeg", quality: 85, fullPage: true });
   await page.close();
@@ -125,18 +149,10 @@ export async function POST(req: NextRequest) {
     const mainResult = await callModel(model, systemPrompt, userPrompt, inputMode, ssBase64, temperature, { openaiKey, anthropicKey, geminiKey });
     const parsed = parseAgentResponse(mainResult.text, shuffled);
 
-    // ── 2. Manipulation check (optional) ──
-    let manipulationCheck: ManipulationCheck | null = null;
-    if (enableManipCheck && condition !== "control") {
-      try {
-        const checkResult = await callModel(model, systemPrompt, MANIPULATION_CHECK_PROMPT, "text_flat", undefined, 0, { openaiKey, anthropicKey, geminiKey });
-        manipulationCheck = parseManipulationCheck(checkResult.text, targetId);
-        mainResult.inputTokens += checkResult.inputTokens;
-        mainResult.outputTokens += checkResult.outputTokens;
-      } catch {
-        // Non-fatal
-      }
-    }
+    // ── 2. Manipulation check ──
+    // Removed: LLM self-report is unreliable.
+    // Instead, analyze 'reasoning' text post-hoc for cue keyword mentions.
+    const manipulationCheck = null;
 
     const totalCost = estimateCost(model, mainResult.inputTokens, mainResult.outputTokens);
 
@@ -192,6 +208,70 @@ function callModel(model: string, system: string, user: string, inputMode: strin
   if (model.startsWith("claude")) return callAnthropic(model, system, user, inputMode, screenshotBase64, temperature, keys.anthropicKey);
   if (model.startsWith("gemini")) return callGemini(model, system, user, inputMode, screenshotBase64, temperature, keys.geminiKey);
   return callOpenAI(model, system, user, inputMode, screenshotBase64, temperature, keys.openaiKey);
+}
+
+// Multi-turn: user1 → assistant1 → user2 (manipulation check)
+async function callModelMultiTurn(
+  model: string, system: string,
+  user1: string, assistant1: string,
+  user2: string,
+  temperature = 1.0, keys: ApiKeys = { openaiKey: "", anthropicKey: "", geminiKey: "" }
+): Promise<LLMResult> {
+  if (model.startsWith("claude")) {
+    const key = keys.anthropicKey;
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model, system, temperature, max_tokens: 1024,
+        messages: [
+          { role: "user", content: user1 },
+          { role: "assistant", content: assistant1 },
+          { role: "user", content: user2 },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return { text: data.content?.map((c: any) => c.text).join("") ?? "", inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0 };
+  }
+  if (model.startsWith("gemini")) {
+    const key = keys.geminiKey;
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [
+          { role: "user", parts: [{ text: user1 }] },
+          { role: "model", parts: [{ text: assistant1 }] },
+          { role: "user", parts: [{ text: user2 }] },
+        ],
+        generationConfig: { temperature, maxOutputTokens: 1024 },
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ?? "";
+    const usage = data.usageMetadata ?? {};
+    return { text, inputTokens: usage.promptTokenCount ?? 0, outputTokens: usage.candidatesTokenCount ?? 0 };
+  }
+  // OpenAI (default)
+  const key = keys.openaiKey;
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model, temperature, max_tokens: 1024,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user1 },
+        { role: "assistant", content: assistant1 },
+        { role: "user", content: user2 },
+      ],
+    }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return { text: data.choices?.[0]?.message?.content ?? "", inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0 };
 }
 
 async function callOpenAI(model: string, system: string, user: string, inputMode: string, screenshotBase64?: string, temperature = 1.0, apiKey = ""): Promise<LLMResult> {
@@ -269,7 +349,7 @@ function parseAgentResponse(raw: string, orderedProducts: any[]) {
       return { chosenProduct: orderedProducts[i].name, chosenBrand: orderedProducts[i].brand, chosenPosition: i + 1, chosenProductId: orderedProducts[i].id, chosenPrice: orderedProducts[i].price ?? 0, chosenRating: orderedProducts[i].rating ?? 0, reasoning: raw.slice(0, 200) };
     }
   }
-  return { chosenProduct: "Parse Error", chosenBrand: "Unknown", chosenPosition: 0, chosenProductId: 0, chosenPrice: 0, chosenRating: 0, reasoning: raw.slice(0, 200) };
+  return { chosenProduct: "Unknown", chosenBrand: "Unknown", chosenPosition: -1, chosenProductId: -1, chosenPrice: -1, chosenRating: -1, reasoning: raw.slice(0, 200) };
 }
 
 function parseManipulationCheck(raw: string, targetProductId: number): ManipulationCheck {

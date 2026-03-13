@@ -40,12 +40,28 @@ if (!API_KEY) { console.error("❌ OPENAI_API_KEY not found"); process.exit(1); 
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const MODEL = "gpt-4o-mini";
 const TEMPERATURE = 1.0;
-const CONDITIONS = ["control", "scarcity", "social_proof", "urgency", "authority", "price_anchoring"];
+const CONDITIONS = ["control", "scarcity", "social_proof_a", "social_proof_b", "urgency", "authority_a", "authority_b", "price_anchoring"];
 const AGENCIES = ["vague", "moderate", "specific"];
 const INPUT_MODES = ["text_json", "text_flat", "html", "screenshot"];  // ★ screenshot included
 const TOTAL = CONDITIONS.length * AGENCIES.length * INPUT_MODES.length * REPS;
 
+const CONCURRENCY = parseInt(process.env.CONCURRENCY || "8", 10);
+
 function genSeed(trialId) { return (trialId * 2654435761 + 42) >>> 0; }
+
+// ── Parallel execution with concurrency limit ──
+async function runParallel(tasks, concurrency) {
+  const results = [];
+  let index = 0;
+  async function worker() {
+    while (index < tasks.length) {
+      const i = index++;
+      results[i] = await tasks[i]().catch(err => ({ _error: err }));
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker()));
+  return results;
+}
 
 async function runTrial(params) {
   const res = await fetch(`${BASE_URL}/api/run-study2`, {
@@ -68,6 +84,7 @@ async function main() {
   console.log(`  Modes: ${INPUT_MODES.join(", ")}`);
   console.log(`  Model: ${MODEL} | Temp: ${TEMPERATURE}`);
   console.log(`  Output: ${jsonlPath}`);
+  console.log(`  Concurrency: ${CONCURRENCY}`);
   console.log("═══════════════════════════════════════════════════════\n");
 
   let done = 0, hits = 0, totalCost = 0, errors = 0, trialId = 0;
@@ -76,41 +93,47 @@ async function main() {
   for (const condition of CONDITIONS) {
     for (const agency of AGENCIES) {
       for (const mode of INPUT_MODES) {
+        // Build batch of tasks for this cell (all reps)
+        const tasks = [];
         for (let rep = 0; rep < REPS; rep++) {
           trialId++;
-          const seed = genSeed(trialId);
-          const pct = Math.round((done / TOTAL) * 100);
-          const rate = done > 0 ? (done / ((Date.now() - startTime) / 1000)).toFixed(2) : "?";
-          const eta = done > 0 ? Math.round((TOTAL - done) / (done / ((Date.now() - startTime) / 1000))) : "?";
-          process.stdout.write(`\r  [${pct}%] ${done}/${TOTAL} | ${condition}×${agency}×${mode} r${rep+1} | hits:${hits} $${totalCost.toFixed(3)} | ${rate}t/s ETA:${eta}s  `);
-
-          try {
+          const tid = trialId;
+          const seed = genSeed(tid);
+          const r = rep + 1;
+          tasks.push(async () => {
             const result = await runTrial({
-              trialId, categoryId: CATEGORY, condition, agency, inputMode: mode,
+              trialId: tid, categoryId: CATEGORY, condition, agency, inputMode: mode,
               model: MODEL, temperature: TEMPERATURE, seed,
               apiKeys: { openai: API_KEY },
             });
-            if (result.error) throw new Error(result.error);
-            if (result.choseTarget) hits++;
-            totalCost += result.estimatedCostUsd || 0;
-            result.rep = rep + 1;
+            result.rep = r;
             result.agency = agency;
             result.inputMode = mode;
             result.categoryId = CATEGORY;
-            fs.appendFileSync(jsonlPath, JSON.stringify(result) + "\n");
-          } catch (err) {
-            errors++;
-            console.error(`\n  ❌ Trial ${trialId}: ${err.message.slice(0, 100)}`);
-            if (err.message.includes("429") || err.message.includes("Rate limit")) {
-              console.log("  ⏳ Rate limited — 30s..."); await new Promise(r => setTimeout(r, 30000));
-              rep--; trialId--; continue;
-            }
-            if (err.message.includes("500") || err.message.includes("fetch failed") || err.message.includes("ECONNREFUSED")) {
-              console.log("  ⏳ Server error — 5s..."); await new Promise(r => setTimeout(r, 5000));
-            }
-          }
-          done++;
+            return result;
+          });
         }
+
+        // Run batch in parallel
+        const results = await runParallel(tasks, CONCURRENCY);
+
+        for (const result of results) {
+          done++;
+          if (result._error) {
+            errors++;
+            console.error(`\n  ❌ Error: ${result._error.message?.slice(0, 100)}`);
+            continue;
+          }
+          if (result.error) { errors++; continue; }
+          if (result.choseTarget) hits++;
+          totalCost += result.estimatedCostUsd || 0;
+          fs.appendFileSync(jsonlPath, JSON.stringify(result) + "\n");
+        }
+
+        const rate = done > 0 ? (done / ((Date.now() - startTime) / 1000)).toFixed(2) : "?";
+        const eta = done > 0 ? Math.round((TOTAL - done) / (done / ((Date.now() - startTime) / 1000))) : "?";
+        const pct = Math.round((done / TOTAL) * 100);
+        process.stdout.write(`\r  [${pct}%] ${done}/${TOTAL} | ${condition}×${agency}×${mode} | hits:${hits} ${totalCost.toFixed(3)} | ${rate}t/s ETA:${eta}s  `);
       }
     }
   }

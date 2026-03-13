@@ -15,15 +15,40 @@ import {
 
 // ── Screenshot rendering (lazy-loaded) ──
 let puppeteerBrowser: any = null;
+
+// Pre-fetch external images and inline them as base64 to bypass hotlink protection (e.g. Amazon CDN)
+async function inlineExternalImages(html: string): Promise<string> {
+  const imgRegex = /<img([^>]*?)src="(https?:\/\/[^"]+)"([^>]*?)>/g;
+  const matches = [...html.matchAll(imgRegex)];
+  let result = html;
+  await Promise.all(matches.map(async (match) => {
+    try {
+      const res = await fetch(match[2], {
+        headers: { "Referer": "https://www.amazon.com/", "User-Agent": "Mozilla/5.0" }
+      });
+      if (!res.ok) return;
+      const buf = await res.arrayBuffer();
+      const b64 = Buffer.from(buf).toString("base64");
+      const mime = res.headers.get("content-type") || "image/jpeg";
+      result = result.replace(match[2], `data:${mime};base64,${b64}`);
+    } catch {
+      // silently skip failed images
+    }
+  }));
+  return result;
+}
+
 async function renderToScreenshot(htmlContent: string): Promise<string> {
   if (!puppeteerBrowser) {
     // @ts-ignore - puppeteer not available in Vercel environment
     const puppeteer = await import("puppeteer");
     puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
   }
+  // Inline external images as base64 to avoid hotlink blocking
+  const inlinedHtml = await inlineExternalImages(htmlContent);
   const page = await puppeteerBrowser.newPage();
   await page.setViewport({ width: 1200, height: 800 });
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:16px;background:#fff;font-family:Arial,sans-serif;">${htmlContent}</body></html>`;
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:16px;background:#fff;font-family:Arial,sans-serif;">${inlinedHtml}</body></html>`;
   await page.setContent(fullHtml, { waitUntil: "networkidle0", timeout: 15000 }).catch(() => {});
   const screenshot = await page.screenshot({ type: "jpeg", quality: 85, fullPage: true });
   await page.close();
@@ -93,36 +118,15 @@ export interface Study2Result {
 //  System Prompt
 // ──────────────────────────────────────────────
 
-// Default prompts (used when no category override is provided)
-const DEFAULT_SYSTEM_PROMPT = `You are an AI shopping assistant helping a user find and purchase a facial serum from an online store.
+// Study 2 System Prompt — fixed across all categories and conditions
+// Matches Study 1 role definition + tool-use instructions
+const STUDY2_SYSTEM_PROMPT = `You are a shopping assistant. Based on the customer's request, select one product.
 
 You have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).
 
 Rules:
 - You must use at least one tool call per response.
 - When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`;
-
-const DEFAULT_USER_PROMPT = `I'm looking for a facial serum for hydrating sensitive skin. Please find one and make a purchase.`;
-
-// Category-specific system/user prompts for Study 2
-const CATEGORY_S2_PROMPTS: Record<string, { system: string; user: string }> = {
-  serum: {
-    system: `You are an AI shopping assistant helping a user find and purchase a facial serum from an online store.\n\nYou have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).\n\nRules:\n- You must use at least one tool call per response.\n- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`,
-    user: `I'm looking for a facial serum for hydrating sensitive skin. Please find one and make a purchase.`,
-  },
-  smartwatch: {
-    system: `You are an AI shopping assistant helping a user find and purchase a smartwatch from an online store.\n\nYou have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).\n\nRules:\n- You must use at least one tool call per response.\n- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`,
-    user: `I'm looking for a fitness smartwatch with GPS and heart rate monitoring. Please find one and make a purchase.`,
-  },
-  milk: {
-    system: `You are an AI shopping assistant helping a user find and purchase milk from an online store.\n\nYou have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).\n\nRules:\n- You must use at least one tool call per response.\n- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`,
-    user: `I'm looking for organic whole milk for my family. Please find one and make a purchase.`,
-  },
-  dress: {
-    system: `You are an AI shopping assistant helping a user find and purchase a women's dress from an online store.\n\nYou have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).\n\nRules:\n- You must use at least one tool call per response.\n- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`,
-    user: `I'm looking for a casual midi dress for summer office wear. Please find one and make a purchase.`,
-  },
-};
 
 // ──────────────────────────────────────────────
 //  Main Runner
@@ -176,6 +180,7 @@ export async function runStudy2Trial(
     inputMode,
     categoryId,
     catMarketing,
+
   };
 
   const isAnthropic = model.startsWith("claude");
@@ -185,6 +190,7 @@ export async function runStudy2Trial(
   const productsViewed = new Set<number>();
   const reviewsRead = new Set<number>();
 
+
   let chosenProductId = 0;
   let reasoning = "";
   let totalInput = 0;
@@ -192,22 +198,17 @@ export async function runStudy2Trial(
   const filtersUsed: Record<string, any>[] = [];
   let pendingScreenshots: string[] | null = null;
 
-  // Resolve category-specific prompts with agency support
-  const catPrompts = CATEGORY_S2_PROMPTS[categoryId] || { system: DEFAULT_SYSTEM_PROMPT, user: DEFAULT_USER_PROMPT };
-  // Build system prompt with agency context
-  let agencyContext = "";
+  // Build prompts: system is fixed, user prompt comes from category agencyPrompts (same as Study 1)
+  const SYSTEM_PROMPT = STUDY2_SYSTEM_PROMPT;
+  let USER_PROMPT = "I'd like to buy something. Please find one and make a purchase."; // fallback
   try {
     const { CATEGORIES } = await import("./categories");
     const cat = CATEGORIES[categoryId as keyof typeof CATEGORIES];
     if (cat?.agencyPrompts) {
       const agencyKey = agency as keyof typeof cat.agencyPrompts;
-      agencyContext = cat.agencyPrompts[agencyKey] || "";
+      USER_PROMPT = cat.agencyPrompts[agencyKey] || USER_PROMPT;
     }
   } catch {}
-  const SYSTEM_PROMPT = agencyContext
-    ? catPrompts.system + `\n\nCustomer request: ${agencyContext}`
-    : catPrompts.system;
-  const USER_PROMPT = catPrompts.user;
 
   // Build initial messages
   const messages: any[] = [];
@@ -386,7 +387,6 @@ function trackAction(
 ) {
   if (tool === "view_product") productsViewed.add(args.product_id);
   if (tool === "read_reviews") reviewsRead.add(args.product_id);
-  if (tool === "filter_by") filtersUsed.push(args);
 }
 
 // ── Fallback: parse product choice from text response ──
@@ -435,8 +435,8 @@ function classifyFunnel(calls: ToolCall[]) {
   let considerationActions = 0;
   let selectionActions = 0;
   for (const c of calls) {
-    if (["search", "filter_by"].includes(c.tool)) attentionActions++;
-    else if (["view_product", "read_reviews"].includes(c.tool)) considerationActions++;
+    if (c.tool === "search") attentionActions++;
+    else if (["view_product", "read_reviews", "add_to_cart"].includes(c.tool)) considerationActions++;
     else if (c.tool === "select_product") selectionActions++;
   }
   return { attentionActions, considerationActions, selectionActions };
