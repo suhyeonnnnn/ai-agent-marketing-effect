@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
   // Puppeteer rendering for JPEGs
   let jpgCount = 0;
   try {
-    const puppeteer = await import("puppeteer");
+    const puppeteer = await import(/* webpackIgnore: true */ "puppeteer");
     const browser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
 
     for (const { filename, html } of allHtmls) {

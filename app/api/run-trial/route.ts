@@ -37,7 +37,7 @@ async function inlineExternalImages(html: string): Promise<string> {
 async function renderHtmlToScreenshot(htmlContent: string): Promise<string> {
   if (!puppeteerBrowser) {
     // @ts-ignore - puppeteer not available in Vercel environment
-    const puppeteer = await import("puppeteer");
+    const puppeteer = await import(/* webpackIgnore: true */ "puppeteer");
     puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
   }
   // Inline external images as base64 to avoid hotlink blocking (e.g. Amazon CDN)
