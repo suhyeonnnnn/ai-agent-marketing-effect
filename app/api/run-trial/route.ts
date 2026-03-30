@@ -37,6 +37,7 @@ async function inlineExternalImages(html: string): Promise<string> {
 async function renderHtmlToScreenshot(htmlContent: string): Promise<string> {
   if (!puppeteerBrowser) {
     // @ts-ignore - puppeteer not available in Vercel environment
+    // @ts-ignore
     const puppeteer = await import(/* webpackIgnore: true */ "puppeteer");
     puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
   }

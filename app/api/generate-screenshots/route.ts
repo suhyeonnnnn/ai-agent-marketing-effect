@@ -107,6 +107,7 @@ export async function POST(req: NextRequest) {
   // Puppeteer rendering for JPEGs
   let jpgCount = 0;
   try {
+    // @ts-ignore - puppeteer is optional, only available locally
     const puppeteer = await import(/* webpackIgnore: true */ "puppeteer");
     const browser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
 
