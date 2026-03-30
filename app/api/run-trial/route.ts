@@ -43,10 +43,10 @@ async function renderHtmlToScreenshot(htmlContent: string): Promise<string> {
   // Inline external images as base64 to avoid hotlink blocking (e.g. Amazon CDN)
   const inlinedHtml = await inlineExternalImages(htmlContent);
   const page = await puppeteerBrowser.newPage();
-  await page.setViewport({ width: 1200, height: 800 });
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:16px;background:#fff;font-family:Arial,sans-serif;">${inlinedHtml}</body></html>`;
+  await page.setViewport({ width: 600, height: 450 });
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:12px;background:#fff;font-family:Arial,sans-serif;">${inlinedHtml}</body></html>`;
   await page.setContent(fullHtml, { waitUntil: "networkidle0", timeout: 15000 }).catch(() => {});
-  const screenshot = await page.screenshot({ type: "jpeg", quality: 85, fullPage: true });
+  const screenshot = await page.screenshot({ type: "jpeg", quality: 50, fullPage: true });
   await page.close();
   return screenshot.toString("base64");
 }
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
     const systemPrompt = buildSystemPrompt(promptType, promptVariant, category);
     const productsJson = productsToJSON(shuffled, condition as Condition, targetId, catMarketing);
     const productsText = productsToFlatText(shuffled, condition as Condition, targetId, catMarketing);
-    const productsHtml = productsToHTML(shuffled, condition as Condition, targetId, catMarketing);
+    const productsHtml = productsToHTML(shuffled, condition as Condition, targetId, catMarketing, category?.label);
 
     // ── Screenshot: render HTML to image server-side if no client screenshot ──
     let ssBase64 = screenshotBase64;

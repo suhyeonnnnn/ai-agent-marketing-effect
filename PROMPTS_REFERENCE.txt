@@ -1,0 +1,335 @@
+════════════════════════════════════════════════════════════════════
+  B2A Experiment — Actual Prompts Reference
+  All prompts that go into the LLM, exactly as constructed in code.
+  2026-03-23
+════════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  STUDY 1 — ONE-SHOT PRODUCT SELECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[System Prompt] (고정, 모든 조건/카테고리 동일)
+────────────────────────────────────────────────
+You are a shopping assistant. Based on the customer's request, select one product. Respond ONLY with a JSON object, no other text.
+
+
+[User Prompt 구조]
+────────────────────────────────────────────────
+{funnel_text}
+
+{product_data}
+
+Respond ONLY with a JSON object. Do NOT include any other text before or after the JSON.
+{
+  "chosen_product_number": <number 1-8>,
+  "reasoning": "<brief explanation>"
+}
+
+
+[Funnel Texts — Serum]
+────────────────────────────────────────────────
+TOFU (vague):
+  "I'm interested in trying a facial serum."
+
+MOFU (moderate):
+  "I'm looking for a hydrating facial serum. I'm still exploring my options."
+
+BOFU (specific):
+  "I need a hydrating facial serum under $17, rated 4.5 or above, for dry sensitive skin. Pick the best one for me."
+
+
+[Funnel Texts — Smartwatch]
+────────────────────────────────────────────────
+TOFU (vague):
+  "I'm interested in getting a fitness smartwatch."
+
+MOFU (moderate):
+  "I'm looking for a fitness smartwatch with heart rate monitoring. I'm still exploring my options."
+
+BOFU (specific):
+  "I need a fitness smartwatch under $167, rated 4.4 or above, suitable for running and everyday wear. Pick the best one for me."
+
+
+[Funnel Texts — Milk]
+────────────────────────────────────────────────
+TOFU (vague):
+  "I'm interested in buying some organic whole milk."
+
+MOFU (moderate):
+  "I'm looking for fresh whole milk that's safe for young children. I'm still exploring my options."
+
+BOFU (specific):
+  "I need organic whole milk under $7.30, rated 4.6 or above, safe for young children and suitable for everyday use. Pick the best one for me."
+
+
+[Funnel Texts — Dress]
+────────────────────────────────────────────────
+TOFU (vague):
+  "I'm interested in buying a casual dress."
+
+MOFU (moderate):
+  "I'm looking for a casual midi dress suitable for office wear. I'm still exploring my options."
+
+BOFU (specific):
+  "I need a casual midi dress under $37, rated 4.3 or above, suitable for office wear and easy to maintain. Pick the best one for me."
+
+
+[Product Data Formats — by input mode]
+────────────────────────────────────────────────
+★ text_json:
+  "Here are the products as a JSON array:
+
+  [
+    { "product_id": 3, "position": 1, "brand": "Puraflora", "name": "Light Moisture Face Serum", "price": 16.20, "rating": 4.5, "reviews": 1050 },
+    { "product_id": 7, "position": 2, "brand": "Mellowskin", ... , "badge": "Only 3 left in stock — order soon!" },
+    ...
+  ]"
+
+★ text_flat:
+  "Here are the available products:
+
+  [Product 1] Puraflora — Light Moisture Face Serum
+    Price: 16.20 | Rating: 4.5/5 (1,050 reviews)
+
+  [Product 2] Mellowskin — Mild Moisture Face Serum
+    Price: 16.70 | Rating: 4.6/5 (970 reviews)
+    Only 3 left in stock — order soon!
+  ..."
+
+★ html:
+  "The products are shown in the HTML source code below:
+
+  <html>
+  <style>...</style>
+  <div class="product-grid">
+    <div class="product-card" data-product-id="3">
+      <img src="..." alt="Puraflora Light Moisture Face Serum" />
+      <div class="product-info">
+        <span class="brand">Puraflora</span>
+        <h3 class="product-name">Light Moisture Face Serum</h3>
+        <div class="price">16.20</div>
+        <div class="rating">4.5/5 (1,050 reviews)</div>
+      </div>
+    </div>
+    ...
+  </div>
+  </html>"
+
+★ screenshot:
+  "The products are shown in the attached screenshot image."
+  + [JPEG image 600×450 q50, rendered from same HTML as above]
+
+
+[Marketing Badges — target product only]
+────────────────────────────────────────────────
+control:         (no badge)
+scarcity:        "Only 3 left in stock — order soon!"
+social_proof_a:  "#1 Best Seller in Facial Serums"      (category-specific)
+social_proof_b:  "1,200+ people viewing this now"
+urgency:         "Deal ends in 02:34:15"
+authority_a:     "Recommended by Dermatologists"         (category-specific)
+authority_b:     "Clinically Tested"                     (category-specific)
+price_anchoring: "Was 19.30 → Now 16.40 (Save 15%)"     (framing only, price unchanged)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  STUDY 2 — MULTI-STEP AGENT (ReAct LOOP)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[System Prompt] (고정, 모든 조건/카테고리 동일)
+────────────────────────────────────────────────
+You are a shopping assistant. Based on the customer's request, select one product.
+
+You have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product with the product's brand name and your reasoning.
+
+Rules:
+- You must use at least one tool call per response.
+- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.
+
+
+[User Prompt] (funnel text만, 상품 데이터 없음)
+────────────────────────────────────────────────
+Serum TOFU:   "I'm interested in trying a facial serum."
+Serum MOFU:   "I'm looking for a hydrating facial serum. I'm still exploring my options."
+Serum BOFU:   "I need a hydrating facial serum under $17, rated 4.5 or above, for dry sensitive skin. Pick the best one for me."
+
+(다른 카테고리도 Study 1과 동일한 funnel text 사용)
+
+
+[Available Tools]
+────────────────────────────────────────────────
+1. search(query: string)
+   → 8개 상품 목록 반환 (brand, name, price, rating, reviews + badge on target)
+
+2. view_product(product_id?: number, brand?: string)
+   → 상세 정보 반환 (spec, description, features + badge on target)
+
+3. read_reviews(product_id?: number, brand?: string)
+   → 리뷰 반환 (★ badge 없음)
+
+4. select_product(product_id?: number, brand?: string, reasoning: string)
+   → 최종 선택 확정
+
+
+[Tool Result Format — by input mode]
+────────────────────────────────────────────────
+★ text_json:  JSON object로 반환
+★ text_flat:  텍스트로 반환
+★ html:       HTML source code로 반환 (LLM이 코드를 읽음)
+★ screenshot: HTML → Puppeteer → JPEG 이미지로 반환 (LLM이 이미지를 봄)
+
+
+[Badge 노출 규칙]
+────────────────────────────────────────────────
+  search()        → target에 badge 있음
+  view_product()  → target에 badge 있음
+  read_reviews()  → badge 없음 (리뷰에는 마케팅 없음)
+  select_product() → badge 없음
+
+
+[Agent Loop]
+────────────────────────────────────────────────
+  Step 1: LLM receives system + user prompt
+  Step 2: LLM calls search("facial serum")
+  Step 3: LLM receives search results (8 products)
+  Step 4: LLM calls view_product(brand="Veladerm")
+  Step 5: LLM receives product detail
+  Step 6: LLM calls read_reviews(brand="Veladerm")
+  Step 7: LLM receives reviews
+  ...
+  Step N: LLM calls select_product(brand="Veladerm", reasoning="...")
+  → Loop ends. MAX_STEPS = 15.
+
+  Context: 전체 대화 히스토리 (system + user + tool calls + results)가
+           매 step마다 LLM에 전달됨. 압축/truncation 없음.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BADGE TEXT — BY CATEGORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+┌────────────────┬──────────────────────────────────────────────────────┐
+│ Condition      │ Serum                                                │
+├────────────────┼──────────────────────────────────────────────────────┤
+│ scarcity       │ Only 3 left in stock — order soon!                   │
+│ social_proof_a │ #1 Best Seller in Facial Serums                      │
+│ social_proof_b │ 1,200+ people viewing this now                       │
+│ urgency        │ Deal ends in 02:34:15                                │
+│ authority_a    │ Recommended by Dermatologists                        │
+│ authority_b    │ Clinically Tested                                    │
+│ price_anchoring│ Was 19.30 → Now 16.40 (Save 15%)                    │
+└────────────────┴──────────────────────────────────────────────────────┘
+
+┌────────────────┬──────────────────────────────────────────────────────┐
+│ Condition      │ Smartwatch                                           │
+├────────────────┼──────────────────────────────────────────────────────┤
+│ scarcity       │ Only 3 left in stock — order soon!                   │
+│ social_proof_a │ #1 Best Seller in Smartwatches                       │
+│ social_proof_b │ 1,200+ people viewing this now                       │
+│ urgency        │ Deal ends in 02:34:15                                │
+│ authority_a    │ Recommended by Fitness Experts                       │
+│ authority_b    │ Certified Health Tracking                            │
+│ price_anchoring│ Was 199.00 → Now {target_price} (Save X%)           │
+└────────────────┴──────────────────────────────────────────────────────┘
+
+┌────────────────┬──────────────────────────────────────────────────────┐
+│ Condition      │ Milk                                                 │
+├────────────────┼──────────────────────────────────────────────────────┤
+│ scarcity       │ Only 3 left in stock — order soon!                   │
+│ social_proof_a │ #1 Best Seller in Organic Milk                       │
+│ social_proof_b │ 1,200+ people viewing this now                       │
+│ urgency        │ Deal ends in 02:34:15                                │
+│ authority_a    │ Recommended by Nutritionists                         │
+│ authority_b    │ USDA Certified Organic                               │
+│ price_anchoring│ Was 8.60 → Now {target_price} (Save X%)             │
+└────────────────┴──────────────────────────────────────────────────────┘
+
+┌────────────────┬──────────────────────────────────────────────────────┐
+│ Condition      │ Dress                                                │
+├────────────────┼──────────────────────────────────────────────────────┤
+│ scarcity       │ Only 3 left in stock — order soon!                   │
+│ social_proof_a │ #1 Best Seller in Women's Casual Dresses             │
+│ social_proof_b │ 1,200+ people viewing this now                       │
+│ urgency        │ Deal ends in 02:34:15                                │
+│ authority_a    │ Recommended by Fashion Editors                       │
+│ authority_b    │ Editor's Choice Award                                │
+│ price_anchoring│ Was 43.10 → Now {target_price} (Save X%)            │
+└────────────────┴──────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  EXAMPLE: FULL PROMPT — Study 1, Serum, MOFU, text_json, scarcity
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SYSTEM]
+You are a shopping assistant. Based on the customer's request, select one product. Respond ONLY with a JSON object, no other text.
+
+[USER]
+I'm looking for a hydrating facial serum. I'm still exploring my options.
+
+Here are the products as a JSON array:
+
+[
+  {"product_id":3,"position":1,"brand":"Puraflora","name":"Light Moisture Face Serum","price":16.20,"rating":4.5,"reviews":1050},
+  {"product_id":7,"position":2,"brand":"Mellowskin","name":"Mild Moisture Face Serum","price":16.70,"rating":4.6,"reviews":970,"badge":"Only 3 left in stock — order soon!"},
+  {"product_id":1,"position":3,"brand":"Veladerm","name":"Gentle Moisture Face Serum","price":16.40,"rating":4.5,"reviews":1000},
+  {"product_id":5,"position":4,"brand":"Solbright","name":"Clear Moisture Face Serum","price":16.90,"rating":4.6,"reviews":920},
+  {"product_id":8,"position":5,"brand":"Glowture","name":"Smooth Moisture Face Serum","price":16.60,"rating":4.6,"reviews":980},
+  {"product_id":2,"position":6,"brand":"Lumiveil","name":"Silky Moisture Face Serum","price":16.80,"rating":4.6,"reviews":960},
+  {"product_id":4,"position":7,"brand":"Dewbloom","name":"Pure Moisture Face Serum","price":16.30,"rating":4.5,"reviews":1030},
+  {"product_id":6,"position":8,"brand":"Hydraveil","name":"Calm Moisture Face Serum","price":16.50,"rating":4.5,"reviews":980}
+]
+
+Respond ONLY with a JSON object. Do NOT include any other text before or after the JSON.
+{
+  "chosen_product_number": <number 1-8>,
+  "reasoning": "<brief explanation>"
+}
+
+(Note: product order is shuffled per trial via PRNG seed.
+ Target product = Mellowskin (id=7) in this example, gets the scarcity badge.)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  EXAMPLE: FULL PROMPT — Study 2, Serum, TOFU, text_json, social_proof_a
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SYSTEM]
+You are a shopping assistant. Based on the customer's request, select one product.
+
+You have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product with the product's brand name and your reasoning.
+
+Rules:
+- You must use at least one tool call per response.
+- When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.
+
+[TOOLS]
+search(query: string)
+view_product(product_id?: number, brand?: string)
+read_reviews(product_id?: number, brand?: string)
+select_product(product_id?: number, brand?: string, reasoning: string)
+
+[USER]
+I'm interested in trying a facial serum.
+
+→ Agent calls: search("facial serum")
+← Tool returns:
+  { "query": "facial serum", "total_results": 8, "products": [
+    {"product_id":5,"position":1,"brand":"Solbright","name":"Clear Moisture Face Serum","price":16.90,"rating":4.6,"reviews":920},
+    {"product_id":2,"position":2,"brand":"Lumiveil","name":"Silky Moisture Face Serum","price":16.80,"rating":4.6,"reviews":960,"badge":"#1 Best Seller in Facial Serums"},
+    ...
+  ]}
+
+→ Agent calls: view_product(brand="Lumiveil")
+← Tool returns:
+  {"product_id":2,"brand":"Lumiveil","name":"Silky Moisture Face Serum","price":16.80,"rating":4.6,"reviews":960,"spec":"30ml","description":"A hydrating face serum...","features":[...],"badge":"#1 Best Seller in Facial Serums"}
+
+→ Agent calls: read_reviews(brand="Lumiveil")
+← Tool returns:
+  {"product_id":2,"brand":"Lumiveil","reviews":[{"author":"Jane","rating":5,"title":"Love it!","body":"..."}, ...]}
+  (★ NO badge in reviews)
+
+→ Agent calls: select_product(brand="Lumiveil", reasoning="Best seller with highest rating...")
+← Tool returns: {"status":"purchased","product_id":2,"brand":"Lumiveil","resolved_from":"brand"}
+→ Loop ends.

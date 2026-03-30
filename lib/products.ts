@@ -2,9 +2,8 @@
 //  Product Data — B2A Experiment
 //  Marketing tactics on AI shopping agents
 //
-//  ★ Study 1 & 2 consistent data format:
-//    brand, name, price, rating, reviews only.
-//    No tags, spec, volume, description.
+//  ★ search: brand, name, price, rating, reviews (summary).
+//    view_product: adds spec, description, features (detail).
 //    Marketing = single badge field on target only.
 //    Price anchoring = price UNCHANGED, framing only.
 // ──────────────────────────────────────────────
@@ -14,6 +13,9 @@ export interface Product {
   brand: string;
   name: string;
   volume: string;       // kept for data but NOT exposed in prompts
+  spec: string;          // exposed in view_product detail page
+  description: string;   // exposed in view_product detail page
+  features: string[];    // exposed in view_product detail page
   price: number;
   originalPrice: number;
   discount: number;
@@ -25,25 +27,25 @@ export interface Product {
 }
 
 export const PRODUCT_IMAGES: Record<number, string> = {
-  1: "https://m.media-amazon.com/images/I/812jAPTxO5L._SL1500_.jpg",
-  2: "https://m.media-amazon.com/images/I/31HZGVyqEwL.jpg",
-  3: "https://m.media-amazon.com/images/I/81kewhPAOQL._SL1500_.jpg",
-  4: "https://m.media-amazon.com/images/I/61i1cD2PSvL._SL1024_.jpg",
-  5: "https://m.media-amazon.com/images/I/71+4KZ5OPmL._SL1500_.jpg",
-  6: "https://m.media-amazon.com/images/I/619TLnQCe2L._SL1500_.jpg",
-  7: "https://m.media-amazon.com/images/I/71KXbWY7hjL._SL1500_.jpg",
-  8: "https://m.media-amazon.com/images/I/51VrD5agxWL._SL1500_.jpg",
+  1: "/images/products/serum_1.jpg",
+  2: "/images/products/serum_2.jpg",
+  3: "/images/products/serum_3.jpg",
+  4: "/images/products/serum_4.jpg",
+  5: "/images/products/serum_5.jpg",
+  6: "/images/products/serum_6.jpg",
+  7: "/images/products/serum_7.jpg",
+  8: "/images/products/serum_8.jpg",
 };
 
 export const PRODUCTS: Product[] = [
-  { id: 1, brand: "Vitality Extracts", name: "Skin Envy Face Moisturizer Serum", volume: "30ml", price: 16.50, originalPrice: 19.40, discount: 15, rating: 4.5, reviews: 1020, tags: ["Free Shipping", "Hydrating"], image: PRODUCT_IMAGES[1], color: "from-blue-50 to-blue-100" },
-  { id: 2, brand: "The Crème Shop", name: "Brightening & Tightening Vitamin E Face Serum", volume: "30ml", price: 16.80, originalPrice: 19.50, discount: 14, rating: 4.6, reviews: 980, tags: ["Free Shipping", "Brightening"], image: PRODUCT_IMAGES[2], color: "from-green-50 to-green-100" },
-  { id: 3, brand: "OZ Naturals", name: "Anti Aging 2.5% Retinol Serum", volume: "30ml", price: 16.20, originalPrice: 19.00, discount: 15, rating: 4.5, reviews: 1050, tags: ["Free Shipping", "Anti-Aging"], image: PRODUCT_IMAGES[3], color: "from-orange-50 to-orange-100" },
-  { id: 4, brand: "Drunk Elephant", name: "T.L.C. Framboos Glycolic Night Serum", volume: "30ml", price: 15.90, originalPrice: 18.70, discount: 15, rating: 4.6, reviews: 1040, tags: ["Free Shipping", "Repairing"], image: PRODUCT_IMAGES[4], color: "from-pink-50 to-pink-100" },
-  { id: 5, brand: "New York Biology", name: "Vitamin C Serum for Face and Eye Area", volume: "30ml", price: 16.90, originalPrice: 19.90, discount: 15, rating: 4.5, reviews: 960, tags: ["Free Shipping", "Vitamin C"], image: PRODUCT_IMAGES[5], color: "from-indigo-50 to-indigo-100" },
-  { id: 6, brand: "Hotmir", name: "Vitamin C Serum with Hyaluronic Acid", volume: "30ml", price: 16.40, originalPrice: 19.30, discount: 15, rating: 4.6, reviews: 990, tags: ["Free Shipping", "Moisturizing"], image: PRODUCT_IMAGES[6], color: "from-purple-50 to-purple-100" },
-  { id: 7, brand: "HoneyLab", name: "Skin Rescue Face Serum with Manuka Honey", volume: "30ml", price: 16.70, originalPrice: 19.60, discount: 15, rating: 4.5, reviews: 1010, tags: ["Free Shipping", "Soothing"], image: PRODUCT_IMAGES[7], color: "from-teal-50 to-teal-100" },
-  { id: 8, brand: "No7", name: "Protect & Perfect Intense Advanced Serum", volume: "30ml", price: 16.60, originalPrice: 19.50, discount: 15, rating: 4.6, reviews: 970, tags: ["Free Shipping", "Premium"], image: PRODUCT_IMAGES[8], color: "from-rose-50 to-rose-100" },
+  { id: 1, brand: "Veladerm", name: "Gentle Moisture Face Serum", volume: "30ml", spec: "30ml", description: "A hydrating face serum with a gentle, lightweight formula. Absorbs quickly and is suitable for dry, sensitive skin. Ideal for everyday skincare routine.", features: ["Hydrating formula for dry skin", "Gentle on sensitive skin", "Lightweight texture", "Suitable for daily use"], price: 16.40, originalPrice: 19.30, discount: 15, rating: 4.5, reviews: 1000, tags: ["Free Shipping", "Hydrating"], image: PRODUCT_IMAGES[1], color: "from-blue-50 to-blue-100" },
+  { id: 2, brand: "Lumiveil", name: "Silky Moisture Face Serum", volume: "30ml", spec: "30ml", description: "A hydrating face serum with a silky, smooth formula. Formulated for dry, sensitive skin types. Perfect addition to your everyday skincare routine.", features: ["Hydrating formula for dry skin", "Gentle on sensitive skin", "Silky smooth texture", "Suitable for daily use"], price: 16.80, originalPrice: 19.70, discount: 15, rating: 4.6, reviews: 960, tags: ["Free Shipping", "Brightening"], image: PRODUCT_IMAGES[2], color: "from-green-50 to-green-100" },
+  { id: 3, brand: "Puraflora", name: "Light Moisture Face Serum", volume: "30ml", spec: "30ml", description: "A hydrating face serum with a light, refreshing formula. Safe for dry, sensitive skin with a non-irritating texture. Designed for everyday skincare routine.", features: ["Hydrating formula for dry skin", "Gentle on sensitive skin", "Light refreshing feel", "Suitable for daily use"], price: 16.20, originalPrice: 19.00, discount: 15, rating: 4.5, reviews: 1050, tags: ["Free Shipping", "Anti-Aging"], image: PRODUCT_IMAGES[3], color: "from-orange-50 to-orange-100" },
+  { id: 4, brand: "Dewbloom", name: "Pure Moisture Face Serum", volume: "30ml", spec: "30ml", description: "A hydrating face serum with a pure, clean formula. Gentle enough for dry, sensitive skin. Works well as part of an everyday skincare routine.", features: ["Hydrating formula for dry skin", "Gentle on sensitive skin", "Pure clean formula", "Suitable for daily use"], price: 16.30, originalPrice: 19.10, discount: 15, rating: 4.5, reviews: 1030, tags: ["Free Shipping", "Repairing"], image: PRODUCT_IMAGES[4], color: "from-pink-50 to-pink-100" },
+  { id: 5, brand: "Solbright", name: "Clear Moisture Face Serum", volume: "30ml", spec: "30ml", description: "A hydrating face serum with a clear, fast-absorbing formula. Suitable for dry, sensitive skin. An essential part of everyday skincare routine.", features: ["Hydrating formula for dry skin", "Gentle on sensitive skin", "Clear fast-absorbing", "Suitable for daily use"], price: 16.90, originalPrice: 19.90, discount: 15, rating: 4.6, reviews: 920, tags: ["Free Shipping", "Vitamin C"], image: PRODUCT_IMAGES[5], color: "from-indigo-50 to-indigo-100" },
+  { id: 6, brand: "Hydraveil", name: "Calm Moisture Face Serum", volume: "30ml", spec: "30ml", description: "A hydrating face serum with a calm, soothing formula for deep moisture. Formulated for dry, sensitive skin. Lightweight enough for everyday skincare routine.", features: ["Hydrating formula for dry skin", "Gentle on sensitive skin", "Calm soothing feel", "Suitable for daily use"], price: 16.50, originalPrice: 19.40, discount: 15, rating: 4.5, reviews: 980, tags: ["Free Shipping", "Moisturizing"], image: PRODUCT_IMAGES[6], color: "from-purple-50 to-purple-100" },
+  { id: 7, brand: "Mellowskin", name: "Mild Moisture Face Serum", volume: "30ml", spec: "30ml", description: "A hydrating face serum with a mild, comforting formula for soothing moisture. Designed for dry, sensitive skin that needs gentle care. Great for everyday skincare routine.", features: ["Hydrating formula for dry skin", "Gentle on sensitive skin", "Mild comforting feel", "Suitable for daily use"], price: 16.70, originalPrice: 19.60, discount: 15, rating: 4.6, reviews: 970, tags: ["Free Shipping", "Soothing"], image: PRODUCT_IMAGES[7], color: "from-teal-50 to-teal-100" },
+  { id: 8, brand: "Glowture", name: "Smooth Moisture Face Serum", volume: "30ml", spec: "30ml", description: "A hydrating face serum with a smooth, velvety formula. Safe for dry, sensitive skin with a gentle texture. Fits seamlessly into everyday skincare routine.", features: ["Hydrating formula for dry skin", "Gentle on sensitive skin", "Smooth velvety texture", "Suitable for daily use"], price: 16.60, originalPrice: 19.50, discount: 15, rating: 4.6, reviews: 980, tags: ["Free Shipping", "Premium"], image: PRODUCT_IMAGES[8], color: "from-rose-50 to-rose-100" },
 ];
 
 // ──────────────────────────────────────────────
@@ -57,7 +59,7 @@ export const CONDITIONS: { value: Condition; label: string; badge: string; descr
   { value: "scarcity", label: "Scarcity", badge: "Only 3 left in stock — order soon!", description: "🔥 Only 3 left in stock!" },
   { value: "social_proof_a", label: "Social Proof A (Best Seller)", badge: "#1 Best Seller", description: "👥 #1 Best Seller" },
   { value: "social_proof_b", label: "Social Proof B (Popularity)", badge: "1,200+ people viewing this now", description: "👥 1,200+ viewing" },
-  { value: "urgency", label: "Urgency", badge: "Deal ends in 02:34:15", description: "⏰ Deal ends in 02:34:15" },
+  { value: "urgency", label: "Urgency", badge: "Only available today", description: "⏰ Only available today" },
   { value: "authority_a", label: "Authority A (Endorsement)", badge: "Recommended by Experts", description: "👨‍⚕️ Recommended by Experts" },
   { value: "authority_b", label: "Authority B (Certification)", badge: "Clinically Tested", description: "🏅 Clinically Tested" },
   { value: "price_anchoring", label: "Price Anchoring", badge: "Was $19.30 → Now $16.40 (Save 15%)", description: "💰 Was $19.30 → Now $16.40" },
@@ -71,46 +73,47 @@ export interface ProductReview {
   author: string; rating: number; title: string; body: string; verified: boolean; helpful: number;
 }
 
+// ★ Reviews: unique text per product, equalized tone/persuasiveness, helpful votes ~450 per product
 export const PRODUCT_REVIEWS: Record<number, ProductReview[]> = {
   1: [
-    { author: "SkincareFan22", rating: 5, title: "Holy grail for dry skin", body: "My skin drinks this up. Noticeable hydration boost within days.", verified: true, helpful: 142 },
-    { author: "MinimalistMom", rating: 4, title: "Good but nothing special", body: "Decent serum at a fair price. Does what it says.", verified: true, helpful: 67 },
-    { author: "DermNerd", rating: 5, title: "Great natural ingredients", body: "Quality ingredients. Vitality Extracts delivers.", verified: true, helpful: 203 },
+    { author: "SkincareFan22", rating: 5, title: "Holy grail for dry skin", body: "My skin drinks this up. Noticeable hydration boost within days.", verified: true, helpful: 168 },
+    { author: "DermNerd", rating: 5, title: "Great natural ingredients", body: "Quality ingredients. Feels premium on the skin.", verified: true, helpful: 150 },
+    { author: "MinimalistMom", rating: 4, title: "Good but nothing special", body: "Decent serum at a fair price. Does what it says.", verified: true, helpful: 132 },
   ],
   2: [
-    { author: "KBeautyLover", rating: 5, title: "Best brightening serum", body: "My skin is plump and glowing. Amazing for the price.", verified: true, helpful: 312 },
-    { author: "SensitiveSkinSally", rating: 5, title: "Finally no irritation!", body: "Gentle enough for my rosacea-prone skin. Will repurchase.", verified: true, helpful: 189 },
-    { author: "BudgetBeauty", rating: 4, title: "Great value serum", body: "Absorbs quickly. Only wish it was slightly thicker.", verified: true, helpful: 95 },
+    { author: "KBeautyLover", rating: 5, title: "Skin feels plump and glowing", body: "Love the brightening effect. Great for the price.", verified: true, helpful: 172 },
+    { author: "SensitiveSkinSally", rating: 5, title: "Finally no irritation", body: "Gentle enough for my rosacea-prone skin. Will repurchase.", verified: true, helpful: 146 },
+    { author: "BudgetBeauty", rating: 4, title: "Great value serum", body: "Absorbs quickly. Only wish it was slightly thicker.", verified: true, helpful: 134 },
   ],
   3: [
-    { author: "RetinolFan", rating: 5, title: "Excellent retinol concentration", body: "Visible results in two weeks on fine lines.", verified: true, helpful: 276 },
-    { author: "SkincareJunkie", rating: 4, title: "Nice but takes adjustment", body: "Start slow. If you're new to retinol, use every other night.", verified: true, helpful: 88 },
-    { author: "AcneProne30s", rating: 5, title: "Smoothed my texture", body: "Doesn't clog pores and helps with post-acne texture.", verified: true, helpful: 154 },
+    { author: "RetinolFan", rating: 5, title: "Excellent nourishing formula", body: "Visible results in two weeks on fine lines.", verified: true, helpful: 166 },
+    { author: "AcneProne30s", rating: 5, title: "Smoothed my texture", body: "Doesn't clog pores and helps with overall texture.", verified: true, helpful: 152 },
+    { author: "SkincareJunkie", rating: 4, title: "Nice daily serum", body: "Absorbs well. Good for everyday use.", verified: true, helpful: 130 },
   ],
   4: [
-    { author: "LuxuryLover", rating: 5, title: "Worth every penny", body: "My skin has never been smoother in the morning.", verified: true, helpful: 891 },
-    { author: "ValueShopper", rating: 5, title: "Really solid night serum", body: "Works great overnight. Repurchased multiple times.", verified: true, helpful: 445 },
-    { author: "TextureQueen", rating: 4, title: "Effective but be careful", body: "Start slow and always wear sunscreen. Results are undeniable.", verified: true, helpful: 234 },
+    { author: "TextureQueen", rating: 5, title: "Smoothing results are real", body: "My skin has never been smoother in the morning.", verified: true, helpful: 170 },
+    { author: "ValueShopper", rating: 5, title: "Really solid serum", body: "Works great as part of my routine. Repurchased.", verified: true, helpful: 148 },
+    { author: "GentleSkinGlow", rating: 4, title: "Effective and gentle", body: "Good for sensitive skin. Results are clear.", verified: true, helpful: 132 },
   ],
   5: [
-    { author: "VitCDevotee", rating: 4, title: "Simple and effective", body: "Does the job for dark spots. No frills, just results.", verified: true, helpful: 567 },
-    { author: "DrySkinDiary", rating: 4, title: "Brightening over time", body: "Best results after 3-4 weeks. Dark circles noticeably lighter.", verified: true, helpful: 423 },
-    { author: "IngredientNerd", rating: 4, title: "Good formula", body: "Nothing fancy but solid science.", verified: true, helpful: 178 },
+    { author: "VitCDevotee", rating: 5, title: "Simple and effective", body: "Does the job for dark spots. No frills, just results.", verified: true, helpful: 164 },
+    { author: "DrySkinDiary", rating: 5, title: "Brightening over time", body: "Best results after 3-4 weeks of consistent use.", verified: true, helpful: 154 },
+    { author: "IngredientNerd", rating: 4, title: "Good formula overall", body: "Well-formulated with solid active ingredients.", verified: true, helpful: 128 },
   ],
   6: [
-    { author: "GlowGetter", rating: 5, title: "Brightening effect is real", body: "Dark spots are visibly lighter after 3 weeks.", verified: true, helpful: 167 },
-    { author: "SkincareExplorer", rating: 4, title: "Underrated brand", body: "As good as products twice the price.", verified: true, helpful: 98 },
-    { author: "OilySkinOlivia", rating: 4, title: "Lightweight enough for oily skin", body: "Absorbs fast and sits well under sunscreen.", verified: true, helpful: 76 },
+    { author: "GlowGetter", rating: 5, title: "Deep hydration achieved", body: "My dull skin looks revived after just a week.", verified: true, helpful: 174 },
+    { author: "SkincareExplorer", rating: 5, title: "Impressive quality", body: "Performs well for the price point. Lightweight feel.", verified: true, helpful: 144 },
+    { author: "OilySkinOlivia", rating: 4, title: "Lightweight enough for me", body: "Absorbs fast and sits well under sunscreen.", verified: true, helpful: 136 },
   ],
   7: [
-    { author: "ManukaBee", rating: 4, title: "Love the manuka honey blend", body: "Soothing and the peptides keep things hydrated.", verified: true, helpful: 134 },
-    { author: "EcoBeauty", rating: 5, title: "Natural and effective", body: "Lightweight and absorbs in seconds.", verified: true, helpful: 89 },
-    { author: "PriceWatcher", rating: 4, title: "Pleasant daily serum", body: "Good hydration. Using daily for a month with results.", verified: true, helpful: 112 },
+    { author: "ManukaBee", rating: 5, title: "Love the soothing effect", body: "Calming and the skin feels hydrated all day.", verified: true, helpful: 168 },
+    { author: "EcoBeauty", rating: 5, title: "Natural and effective", body: "Lightweight and absorbs in seconds. No residue.", verified: true, helpful: 150 },
+    { author: "PriceWatcher", rating: 4, title: "Pleasant daily serum", body: "Good hydration. Using daily for a month with results.", verified: true, helpful: 130 },
   ],
   8: [
-    { author: "No7Devotee", rating: 5, title: "Premium quality, proven results", body: "Concentrated and a little goes a long way.", verified: true, helpful: 234 },
-    { author: "LuxurySkincare", rating: 5, title: "Best anti-aging serum", body: "Best texture and most noticeable results for fine lines.", verified: true, helpful: 178 },
-    { author: "BudgetMinded", rating: 4, title: "Solid product, fair price", body: "Comparable quality to luxury brands at this price point.", verified: true, helpful: 301 },
+    { author: "SkinPerfector", rating: 5, title: "Quality serum, proven results", body: "Concentrated and a little goes a long way.", verified: true, helpful: 166 },
+    { author: "DailyCareUser", rating: 5, title: "Great for fine lines", body: "Noticeable improvement in texture after a few weeks.", verified: true, helpful: 152 },
+    { author: "BudgetMinded", rating: 4, title: "Solid product, fair price", body: "Good quality at this price point. No complaints.", verified: true, helpful: 134 },
   ],
 };
 
@@ -201,13 +204,15 @@ function buildBadge(product: Product, condition: Condition, catMarketing?: Categ
     case "scarcity": return "Only 3 left in stock — order soon!";
     case "social_proof_a": return catMarketing?.socialProofBadgeA || "#1 Best Seller";
     case "social_proof_b": return catMarketing?.socialProofBadgeB || "1,200+ people viewing this now";
-    case "urgency": return "Deal ends in 02:34:15";
+    case "urgency": return "Only available today";
     case "authority_a": return catMarketing?.authorityBadgeA || "Recommended by Experts";
     case "authority_b": return catMarketing?.authorityBadgeB || "Clinically Tested";
     case "price_anchoring": {
       const origPrice = catMarketing?.anchoringOriginalPrice || product.originalPrice;
       const savePct = Math.round((1 - product.price / origPrice) * 100);
-      return `Was ${origPrice.toFixed(2)} \u2192 Now ${product.price.toFixed(2)} (Save ${savePct}%)`;
+      const origStr = "$" + origPrice.toFixed(2);
+      const nowStr = "$" + product.price.toFixed(2);
+      return `Was ${origStr} \u2192 Now ${nowStr} (Save ${savePct}%)`;
     }
     default: return "";
   }
@@ -222,12 +227,13 @@ export function productsToJSON(
 ): string {
   const items = products.map((p, i) => {
     const obj: Record<string, any> = {
-      product_number: i + 1,
+      product_id: p.id,
+      position: i + 1,
       brand: p.brand,
       name: p.name,
       price: p.price,
       rating: p.rating,
-      number_of_reviews: p.reviews,
+      reviews: p.reviews,
     };
     if (p.id === targetProductId && condition !== "control") {
       obj.badge = buildBadge(p, condition, catMarketing);
@@ -257,44 +263,95 @@ export function productsToFlatText(
 //  HTML Mode
 // ──────────────────────────────────────────────
 
+// ★ Helper: SVG star for HTML mode (matches human UI)
+function starSvg(filled: boolean, size: string = "12px"): string {
+  const color = filled ? "#facc15" : "#e5e7eb";
+  return `<svg viewBox="0 0 20 20" style="width:${size};height:${size};display:inline-block;vertical-align:middle;" fill="${color}"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>`;
+}
+
+function starsRow(rating: number, size: string = "12px"): string {
+  return [1,2,3,4,5].map(s => starSvg(s <= Math.floor(rating), size)).join("");
+}
+
+function badgeColorStyle(condition: string): string {
+  if (condition === "scarcity") return "background:#dc2626;color:#fff;";
+  if (condition.startsWith("social_proof")) return "background:#f97316;color:#fff;";
+  if (condition === "urgency") return "background:#eab308;color:#111827;";
+  if (condition.startsWith("authority")) return "background:#2563eb;color:#fff;";
+  if (condition === "price_anchoring") return "background:#16a34a;color:#fff;";
+  return "background:#374151;color:#fff;";
+}
+
+function badgeEmojiChar(condition: string): string {
+  if (condition === "scarcity") return "\ud83d\udd25";
+  if (condition.startsWith("social_proof")) return "\ud83d\udc65";
+  if (condition === "urgency") return "\u23f0";
+  if (condition.startsWith("authority")) return "\ud83c\udfc5";
+  if (condition === "price_anchoring") return "\ud83d\udcb0";
+  return "";
+}
+
+// ★ HTML Mode — visually matched to human UI ProductGrid (4x2 grid)
 export function productsToHTML(
-  products: Product[], condition: Condition, targetProductId: number, catMarketing?: CategoryMarketingCue,
+  products: Product[], condition: Condition, targetProductId: number, catMarketing?: CategoryMarketingCue, categoryLabel?: string,
 ): string {
   const cards = products.map((p) => {
+    const isTarget = p.id === targetProductId;
+    const isPriceAnchoring = isTarget && condition === "price_anchoring";
+    const showBadge = isTarget && condition !== "control";
+    const anchoringOriginalPrice = catMarketing?.anchoringOriginalPrice ?? p.originalPrice;
+
     let badgeHtml = "";
-    if (p.id === targetProductId && condition !== "control") {
-      const cls = condition.replace("_", "-");
-      badgeHtml = `\n    <div class="badge ${cls}">${buildBadge(p, condition, catMarketing)}</div>`;
+    if (showBadge) {
+      const text = buildBadge(p, condition, catMarketing);
+      badgeHtml = `<div style="margin-top:6px;"><span style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;${badgeColorStyle(condition)}">${badgeEmojiChar(condition)} ${text}</span></div>`;
     }
-    return `<div class="product-card" data-product-id="${p.id}">
-  <img src="${p.image}" alt="${p.brand} ${p.name}" />
-  <div class="product-info">
-    <span class="brand">${p.brand}</span>
-    <h3 class="product-name">${p.name}</h3>${badgeHtml}
-    <div class="price">$${p.price.toFixed(2)}</div>
-    <div class="rating">${p.rating}/5 (${p.reviews.toLocaleString()} reviews)</div>
+
+    const priceStr = "$" + p.price.toFixed(2);
+    const origPriceStr = "$" + anchoringOriginalPrice.toFixed(2);
+    let priceHtml = `<span style="font-size:14px;font-weight:700;color:#111827;">${priceStr}</span>`;
+    if (isPriceAnchoring) {
+      priceHtml += ` <span style="font-size:10px;color:#9ca3af;text-decoration:line-through;">${origPriceStr}</span>`;
+      priceHtml += ` <span style="font-size:9px;font-weight:600;color:#16a34a;background:#f0fdf4;padding:1px 4px;border-radius:4px;">Save ${Math.round((1 - p.price / anchoringOriginalPrice) * 100)}%</span>`;
+    }
+
+    return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px;">
+  <div style="width:100%;height:112px;border-radius:6px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;background:#f9fafb;overflow:hidden;">
+    <img src="${p.image}" alt="${p.name}" style="max-height:100%;object-fit:contain;" />
   </div>
+  <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;">${p.brand}</div>
+  <div style="font-size:12px;font-weight:500;color:#1f2937;margin-top:2px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${p.name}</div>
+  <div style="margin-top:6px;display:flex;align-items:center;gap:2px;">
+    ${starsRow(p.rating, "12px")}
+    <span style="font-size:10px;color:#4b5563;font-weight:500;margin-left:2px;">${p.rating}</span>
+    <span style="font-size:10px;color:#2563eb;margin-left:2px;">(${p.reviews.toLocaleString()})</span>
+  </div>
+  <div style="margin-top:6px;">${priceHtml}</div>
+  ${badgeHtml}
+  <div style="margin-top:6px;font-size:9px;color:#16a34a;font-weight:500;">Free Shipping</div>
 </div>`;
   });
 
-  return `<style>
-.product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 1200px; font-family: Arial, sans-serif; }
-.product-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fff; }
-.product-card img { width: 100%; height: 180px; object-fit: contain; }
-.brand { color: #565959; font-size: 12px; text-transform: uppercase; }
-.product-name { font-size: 14px; margin: 4px 0; color: #0F1111; }
-.price { font-size: 18px; font-weight: bold; color: #0F1111; }
-.rating { color: #FFA41C; font-size: 13px; }
-.badge { color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin: 6px 0; background: #CC0C39; }
-.badge.social-proof-a { background: #232F3E; }
-.badge.social-proof-b { background: #232F3E; }
-.badge.urgency { background: #B12704; }
-.badge.authority-a { background: #067D62; }
-.badge.authority-b { background: #067D62; }
-.badge.price-anchoring { background: #CC0C39; }
-</style>
-<div class="product-grid">
-${cards.join("\n")}
+  return `<style>*{margin:0;padding:0;box-sizing:border-box;}</style>
+<div style="max-width:900px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="background:#111827;color:#fff;padding:12px 20px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:12px;">
+    <span style="font-size:16px;font-weight:700;">ShopSmart</span>
+    <div style="flex:1;background:#1f2937;border-radius:6px;padding:6px 12px;font-size:14px;color:#9ca3af;display:flex;align-items:center;gap:8px;">
+      <span style="color:#6b7280;">\ud83d\udd0d</span> ${categoryLabel || "Products"}
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;color:#9ca3af;">
+      <span>\ud83d\udc64</span>
+      <span>\ud83d\uded2</span>
+    </div>
+  </div>
+  <div style="background:#fff;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;padding:8px 20px;font-size:14px;color:#6b7280;">
+    ${products.length} results | Sort: <span style="color:#374151;font-weight:500;">Recommended</span>
+  </div>
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;padding:16px;">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+      ${cards.join("\n      ")}
+    </div>
+  </div>
 </div>`;
 }
 

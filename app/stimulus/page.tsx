@@ -263,8 +263,14 @@ function StimulusContent() {
                     </div>
                     <div className="flex-1" />
                     {showBadge && (
-                      <div className={`text-xs font-semibold px-2 py-1.5 rounded mb-2 text-center ${getBadgeColor(condition)}`}>
-                        {getBadgeText(condition, categoryId)}
+                      <div className={`text-xs font-bold text-white px-2 py-1.5 rounded mb-2 text-center ${
+                        condition === "scarcity" ? "bg-red-600" :
+                        condition?.startsWith("social_proof") ? "bg-gray-800" :
+                        condition === "urgency" ? "bg-red-700" :
+                        condition?.startsWith("authority") ? "bg-teal-700" :
+                        condition === "price_anchoring" ? "bg-red-600" : "bg-gray-600"
+                      }`}>
+                        {getBadgeText(condition, categoryId).replace(/^[\u{1F525}\u{1F465}\u23F0\u{1F3C6}\u{1F3C5}\u{1F4B0}]\s*/u, "")}
                       </div>
                     )}
                     <button onClick={(e) => { e.stopPropagation(); handleSelectProduct(product.id); }}
@@ -279,125 +285,108 @@ function StimulusContent() {
         </div>
       )}
 
-      {/* ── Product Detail ── */}
+      {/* ── Product Detail (matches tools.ts productToHtmlDetail) ── */}
       {view === "detail" && selectedProductId && (() => {
         const p = catProducts.find((pr: any) => pr.id === selectedProductId);
         if (!p) return null;
         const isTarget = p.id === targetId;
         const showBadge = isTarget && condition !== "control";
-        const productReviews = reviews[selectedProductId] || [];
         return (
-          <div className="max-w-[1000px] mx-auto px-4 py-6">
+          <div className="max-w-[900px] mx-auto px-4 py-6">
             <button onClick={handleBackToListing} className="text-sm text-blue-600 hover:underline mb-4 inline-flex items-center gap-1">
-              ← Back to results
+              ← All Results / Product Detail
             </button>
+            {!isHuman && <span className="text-xs text-gray-400 ml-4 border px-2 py-0.5 rounded">{condition}</span>}
             <div className="bg-white rounded-xl border p-6 flex gap-8">
-              {/* Image */}
-              <div className="w-80 h-80 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center shrink-0">
-                <img src={p.image} alt={p.name} className="h-64 w-auto object-contain" />
+              {/* Image — matches tools.ts .detail-image */}
+              <div className="w-[350px] h-[350px] bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
+                <img src={p.image} alt={`${p.brand} ${p.name}`} className="max-h-[300px] object-contain" />
               </div>
-              {/* Info */}
+              {/* Info — matches tools.ts .detail-info */}
               <div className="flex-1">
-                <p className="text-xs text-gray-400 uppercase tracking-wider">{p.brand}</p>
-                <h1 className="text-xl font-bold text-gray-900 mt-1">{p.name}</h1>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="flex">
-                    {[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= Math.floor(p.rating) ? "text-amber-400" : "text-gray-300"}`}>★</span>)}
-                  </div>
-                  <span className="text-sm text-gray-600">{p.rating}/5</span>
-                  <button onClick={() => handleViewReviews(p.id)} className="text-sm text-blue-600 hover:underline">
-                    ({p.reviews.toLocaleString()} reviews)
-                  </button>
+                <p className="text-xs text-gray-500 uppercase tracking-widest">{p.brand}</p>
+                <h1 className="text-xl font-bold text-gray-900 mt-2">{p.name}</h1>
+                <div className="flex items-center gap-1 mt-2 text-amber-500 text-sm">
+                  {"★".repeat(Math.floor(p.rating))}{"☆".repeat(5 - Math.floor(p.rating))}
+                  <span className="text-amber-600 ml-1">{p.rating}/5 ({p.reviews.toLocaleString()} reviews)</span>
                 </div>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold text-gray-900">${p.price.toFixed(2)}</span>
-                  <span className="text-sm text-green-600 ml-2">Free Shipping</span>
-                </div>
+                <div className="text-3xl font-bold text-gray-900 mt-3">{p.price.toFixed(2)}</div>
+                <div className="text-sm text-gray-500 mt-1">{p.spec}</div>
+                <div className="text-sm text-green-600 mt-1">Free Shipping</div>
                 {showBadge && (
-                  <div className={`mt-4 text-sm font-semibold px-4 py-2.5 rounded-lg inline-block ${getBadgeColor(condition)}`}>
-                    {getBadgeText(condition, categoryId)}
+                  <div className={`mt-3 text-sm font-bold text-white px-4 py-2 rounded-md inline-block ${
+                    condition === "scarcity" ? "bg-red-600" :
+                    condition?.startsWith("social_proof") ? "bg-gray-800" :
+                    condition === "urgency" ? "bg-red-700" :
+                    condition?.startsWith("authority") ? "bg-teal-700" :
+                    condition === "price_anchoring" ? "bg-red-600" : "bg-gray-600"
+                  }`}>
+                    {getBadgeText(condition, categoryId).replace(/^[🔥👥⏰🏆🏅💰]\s*/, "")}
                   </div>
                 )}
-                <div className="mt-6 flex gap-3">
-                  <button onClick={() => handleSelectProduct(p.id)}
-                    className="px-8 py-2.5 rounded-full font-semibold bg-amber-400 hover:bg-amber-500 text-gray-800 transition">
-                    Buy Now
-                  </button>
-                  <button onClick={handleBackToListing}
-                    className="px-6 py-2.5 rounded-full font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition">
-                    Back to Results
-                  </button>
+                {/* About this item — matches tools.ts description + features */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="text-sm font-bold text-gray-900 mb-1.5">About this item</div>
+                  <p className="text-sm text-gray-600 leading-relaxed mb-2">{p.description}</p>
+                  <ul className="text-sm text-gray-600 list-disc pl-5 space-y-0.5">
+                    {p.features?.map((f: string, i: number) => <li key={i}>{f}</li>)}
+                  </ul>
                 </div>
-                {/* Quick Reviews Preview */}
-                {productReviews.length > 0 && (
-                  <div className="mt-6 border-t pt-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-gray-700">Customer Reviews</h3>
-                      <button onClick={() => handleViewReviews(p.id)} className="text-xs text-blue-600 hover:underline">See all →</button>
-                    </div>
-                    {productReviews.slice(0, 2).map((r: any, i: number) => (
-                      <div key={i} className="mb-3 pb-3 border-b border-gray-100 last:border-0">
-                        <div className="flex items-center gap-2">
-                          <span className="flex">{[1,2,3,4,5].map(s => <span key={s} className={`text-[10px] ${s <= r.rating ? "text-amber-400" : "text-gray-300"}`}>★</span>)}</span>
-                          <span className="text-xs font-bold text-gray-700">{r.title}</span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">{r.body}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <button onClick={() => handleSelectProduct(p.id)}
+                  className="mt-4 px-8 py-2.5 rounded-full font-semibold bg-amber-400 hover:bg-amber-500 text-gray-800 transition">
+                  Add to Cart
+                </button>
               </div>
             </div>
           </div>
         );
       })()}
 
-      {/* ── Reviews Page ── */}
+      {/* ── Reviews Page (matches tools.ts executeReadReviews) ── */}
       {view === "reviews" && selectedProductId && (() => {
         const p = catProducts.find((pr: any) => pr.id === selectedProductId);
         const productReviews = reviews[selectedProductId] || [];
         if (!p) return null;
         return (
-          <div className="max-w-[800px] mx-auto px-4 py-6">
+          <div className="max-w-[700px] mx-auto px-4 py-6">
             <button onClick={() => { setView("detail"); logAction("back_to_detail"); }} className="text-sm text-blue-600 hover:underline mb-4 inline-flex items-center gap-1">
               ← Back to product
             </button>
-            <div className="bg-white rounded-xl border p-6">
-              <div className="flex items-center gap-4 pb-4 mb-4 border-b">
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-gray-900">{p.rating}</div>
-                  <div className="flex mt-1">{[1,2,3,4,5].map(s => <span key={s} className={`text-sm ${s <= Math.floor(p.rating) ? "text-amber-400" : "text-gray-300"}`}>★</span>)}</div>
-                </div>
+            <div className="bg-white rounded-xl border p-5">
+              {/* Header with product thumbnail — matches tools.ts review page */}
+              <div className="flex items-center gap-4 pb-4 mb-2 border-b-2 border-gray-200">
+                <img src={p.image} alt={`${p.brand} ${p.name}`} className="w-20 h-20 object-contain rounded-lg bg-gray-50 p-1" />
                 <div>
-                  <p className="text-sm font-semibold text-gray-800">{p.brand} — {p.name}</p>
-                  <p className="text-xs text-gray-500">{p.reviews.toLocaleString()} global ratings · Showing {productReviews.length} reviews</p>
+                  <p className="text-sm font-bold text-gray-900">{p.brand} — {p.name}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-3xl font-bold text-gray-900">{p.rating}</span>
+                    <div>
+                      <div className="text-amber-500 text-sm">
+                        {"★".repeat(Math.floor(p.rating))}{"☆".repeat(5 - Math.floor(p.rating))}
+                      </div>
+                      <p className="text-xs text-gray-500">{p.reviews.toLocaleString()} ratings · {productReviews.length} reviews shown</p>
+                    </div>
+                  </div>
                 </div>
               </div>
+              {/* Reviews — matches tools.ts review cards */}
               {productReviews.map((r: any, i: number) => (
-                <div key={i} className="py-4 border-b border-gray-100 last:border-0">
+                <div key={i} className="py-3 border-b border-gray-100 last:border-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-500">{r.author[0]}</div>
+                    <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-[11px] font-bold text-gray-500">{r.author[0]}</div>
                     <span className="text-xs font-medium text-gray-700">{r.author}</span>
                     {r.verified && <span className="text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded">✓ Verified</span>}
                   </div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="flex">{[1,2,3,4,5].map(s => <span key={s} className={`text-xs ${s <= r.rating ? "text-amber-400" : "text-gray-300"}`}>★</span>)}</span>
+                    <span className="text-xs text-amber-500">
+                      {"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}
+                    </span>
                     <span className="text-xs font-bold text-gray-800">{r.title}</span>
                   </div>
                   <p className="text-sm text-gray-600 leading-relaxed">{r.body}</p>
                   <p className="text-xs text-gray-400 mt-1">{r.helpful} people found this helpful</p>
                 </div>
               ))}
-              <div className="mt-4 flex gap-3">
-                <button onClick={() => handleSelectProduct(p.id)}
-                  className="px-6 py-2 rounded-full font-semibold bg-amber-400 hover:bg-amber-500 text-gray-800 text-sm">
-                  Buy This Product
-                </button>
-                <button onClick={handleBackToListing}
-                  className="px-6 py-2 rounded-full font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm">
-                  Back to Results
-                </button>
-              </div>
             </div>
           </div>
         );

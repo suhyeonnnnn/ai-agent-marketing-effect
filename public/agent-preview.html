@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Screenshot Generator</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; margin: 0; padding: 20px; }
+    .controls { background: #fff; padding: 16px; border-radius: 12px; margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; border: 1px solid #e5e7eb; }
+    .controls select, .controls button { padding: 8px 16px; border-radius: 8px; border: 1px solid #d1d5db; font-size: 14px; }
+    .controls button { background: #2563eb; color: white; border: none; cursor: pointer; font-weight: 600; }
+    .controls button:hover { background: #1d4ed8; }
+    .preview { background: #fff; padding: 24px; border-radius: 12px; border: 1px solid #e5e7eb; }
+    .label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+    #status { font-size: 13px; color: #059669; margin-left: 12px; }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <div>
+      <div class="label">Category</div>
+      <select id="category">
+        <option value="serum">Facial Serum</option>
+        <option value="smartwatch">Smartwatch</option>
+        <option value="milk">Organic Milk</option>
+        <option value="dress">Women's Dress</option>
+      </select>
+    </div>
+    <div>
+      <div class="label">Condition</div>
+      <select id="condition">
+        <option value="control">Control</option>
+        <option value="scarcity">Scarcity</option>
+        <option value="social_proof_a">Social Proof A</option>
+        <option value="urgency">Urgency</option>
+        <option value="authority_a">Authority A</option>
+        <option value="price_anchoring">Price Anchoring</option>
+      </select>
+    </div>
+    <div>
+      <div class="label">Page</div>
+      <select id="page">
+        <option value="search">Search Results</option>
+        <option value="detail">Product Detail</option>
+        <option value="reviews">Reviews</option>
+      </select>
+    </div>
+    <div>
+      <div class="label">Target Product</div>
+      <select id="target">
+        <option value="1">1</option>
+        <option value="2" selected>2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+      </select>
+    </div>
+    <button onclick="render()">Render</button>
+    <span id="status"></span>
+  </div>
+  <div class="preview" id="preview">
+    <p style="color:#9ca3af;text-align:center;">Click "Render" to generate agent view</p>
+  </div>
+
+  <script>
+    async function render() {
+      const category = document.getElementById('category').value;
+      const condition = document.getElementById('condition').value;
+      const page = document.getElementById('page').value;
+      const target = parseInt(document.getElementById('target').value);
+
+      document.getElementById('status').textContent = 'Loading...';
+
+      try {
+        const res = await fetch('/api/agent-preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, condition, page, targetProductId: target, inputMode: 'html' }),
+        });
+        const data = await res.json();
+        document.getElementById('preview').innerHTML = data.html;
+        document.getElementById('status').textContent = `✓ ${page} / ${condition} / ${category}`;
+      } catch (err) {
+        document.getElementById('status').textContent = '✗ Error: ' + err.message;
+      }
+    }
+  </script>
+</body>
+</html>

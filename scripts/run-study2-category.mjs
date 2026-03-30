@@ -41,11 +41,12 @@ const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const MODEL = "gpt-4o-mini";
 const TEMPERATURE = 1.0;
 const CONDITIONS = ["control", "scarcity", "social_proof_a", "social_proof_b", "urgency", "authority_a", "authority_b", "price_anchoring"];
-const AGENCIES = ["vague", "moderate", "specific"];
+const AGENCIES = ["vague", "moderate", "specific", "cautious"];
 const INPUT_MODES = ["text_json", "text_flat", "html", "screenshot"];  // ★ screenshot included
 const TOTAL = CONDITIONS.length * AGENCIES.length * INPUT_MODES.length * REPS;
 
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || "8", 10);
+const RUN_ID = process.env.RUN_ID || "260314_1";  // experiment run folder
 
 function genSeed(trialId) { return (trialId * 2654435761 + 42) >>> 0; }
 
@@ -74,7 +75,7 @@ async function runTrial(params) {
 
 async function main() {
   const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, "-");
-  const outDir = path.join(ROOT, "results", "study2");
+  const outDir = path.join(ROOT, "results", RUN_ID, "study2");
   fs.mkdirSync(outDir, { recursive: true });
   const jsonlPath = path.join(outDir, `${CATEGORY}_experiment_${ts}.jsonl`);
 
@@ -170,6 +171,7 @@ async function main() {
     if (!sub.length) continue;
     console.log(`  ${m.padEnd(18)} ${(sub.filter(t=>t.choseTarget).length/sub.length*100).toFixed(1)}% (${sub.filter(t=>t.choseTarget).length}/${sub.length})`);
   }
+  process.exit(0);
 }
 
 main().catch(err => { console.error("\n❌ Fatal:", err.message); process.exit(1); });

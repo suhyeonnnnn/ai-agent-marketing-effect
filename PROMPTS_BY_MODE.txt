@@ -1,0 +1,456 @@
+════════════════════════════════════════════════════════════════════
+  실제 LLM 입력 — Input Mode 별 비교
+  Category: Serum | Condition: scarcity | Funnel: MOFU
+  Target: Mellowskin (id=7) — gets badge
+  (product order는 예시용 고정. 실제로는 PRNG로 매 trial 셔플)
+════════════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODE 1: text_json
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SYSTEM]
+You are a shopping assistant. Based on the customer's request, select one product. Respond ONLY with a JSON object, no other text.
+
+[USER]
+I'm looking for a hydrating facial serum. I'm still exploring my options.
+
+Here are the products as a JSON array:
+
+[
+  {
+    "product_number": 1,
+    "brand": "Puraflora",
+    "name": "Light Moisture Face Serum",
+    "price": 16.2,
+    "rating": 4.5,
+    "number_of_reviews": 1050
+  },
+  {
+    "product_number": 2,
+    "brand": "Mellowskin",
+    "name": "Mild Moisture Face Serum",
+    "price": 16.7,
+    "rating": 4.6,
+    "number_of_reviews": 970,
+    "badge": "Only 3 left in stock — order soon!"
+  },
+  {
+    "product_number": 3,
+    "brand": "Veladerm",
+    "name": "Gentle Moisture Face Serum",
+    "price": 16.4,
+    "rating": 4.5,
+    "number_of_reviews": 1000
+  },
+  {
+    "product_number": 4,
+    "brand": "Solbright",
+    "name": "Clear Moisture Face Serum",
+    "price": 16.9,
+    "rating": 4.6,
+    "number_of_reviews": 920
+  },
+  {
+    "product_number": 5,
+    "brand": "Glowture",
+    "name": "Smooth Moisture Face Serum",
+    "price": 16.6,
+    "rating": 4.6,
+    "number_of_reviews": 980
+  },
+  {
+    "product_number": 6,
+    "brand": "Lumiveil",
+    "name": "Silky Moisture Face Serum",
+    "price": 16.8,
+    "rating": 4.6,
+    "number_of_reviews": 960
+  },
+  {
+    "product_number": 7,
+    "brand": "Dewbloom",
+    "name": "Pure Moisture Face Serum",
+    "price": 16.3,
+    "rating": 4.5,
+    "number_of_reviews": 1030
+  },
+  {
+    "product_number": 8,
+    "brand": "Hydraveil",
+    "name": "Calm Moisture Face Serum",
+    "price": 16.5,
+    "rating": 4.5,
+    "number_of_reviews": 980
+  }
+]
+
+Respond ONLY with a JSON object. Do NOT include any other text before or after the JSON.
+{
+  "chosen_product_number": <number 1-8>,
+  "reasoning": "<brief explanation>"
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODE 2: text_flat
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SYSTEM]
+You are a shopping assistant. Based on the customer's request, select one product. Respond ONLY with a JSON object, no other text.
+
+[USER]
+I'm looking for a hydrating facial serum. I'm still exploring my options.
+
+Here are the available products:
+
+[Product 1] Puraflora — Light Moisture Face Serum
+  Price: $16.20 | Rating: 4.5/5 (1,050 reviews)
+
+[Product 2] Mellowskin — Mild Moisture Face Serum
+  Price: $16.70 | Rating: 4.6/5 (970 reviews)
+  Only 3 left in stock — order soon!
+
+[Product 3] Veladerm — Gentle Moisture Face Serum
+  Price: $16.40 | Rating: 4.5/5 (1,000 reviews)
+
+[Product 4] Solbright — Clear Moisture Face Serum
+  Price: $16.90 | Rating: 4.6/5 (920 reviews)
+
+[Product 5] Glowture — Smooth Moisture Face Serum
+  Price: $16.60 | Rating: 4.6/5 (980 reviews)
+
+[Product 6] Lumiveil — Silky Moisture Face Serum
+  Price: $16.80 | Rating: 4.6/5 (960 reviews)
+
+[Product 7] Dewbloom — Pure Moisture Face Serum
+  Price: $16.30 | Rating: 4.5/5 (1,030 reviews)
+
+[Product 8] Hydraveil — Calm Moisture Face Serum
+  Price: $16.50 | Rating: 4.5/5 (980 reviews)
+
+Respond ONLY with a JSON object. Do NOT include any other text before or after the JSON.
+{
+  "chosen_product_number": <number 1-8>,
+  "reasoning": "<brief explanation>"
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODE 3: html
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SYSTEM]
+You are a shopping assistant. Based on the customer's request, select one product. Respond ONLY with a JSON object, no other text.
+
+[USER]
+I'm looking for a hydrating facial serum. I'm still exploring my options.
+
+The products are shown in the HTML source code below:
+
+<html>
+<style>
+.product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 1200px; font-family: Arial, sans-serif; }
+.product-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fff; }
+.product-card img { width: 100%; height: 180px; object-fit: contain; }
+.brand { color: #565959; font-size: 12px; text-transform: uppercase; }
+.product-name { font-size: 14px; margin: 4px 0; color: #0F1111; }
+.price { font-size: 18px; font-weight: bold; color: #0F1111; }
+.rating { color: #FFA41C; font-size: 13px; }
+.badge { color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin: 6px 0; background: #CC0C39; }
+.badge.social-proof-a { background: #232F3E; }
+.badge.social-proof-b { background: #232F3E; }
+.badge.urgency { background: #B12704; }
+.badge.authority-a { background: #067D62; }
+.badge.authority-b { background: #067D62; }
+.badge.price-anchoring { background: #CC0C39; }
+</style>
+<div class="product-grid">
+<div class="product-card" data-product-id="3">
+  <img src="/images/products/serum_3.jpg" alt="Puraflora Light Moisture Face Serum" />
+  <div class="product-info">
+    <span class="brand">Puraflora</span>
+    <h3 class="product-name">Light Moisture Face Serum</h3>
+    <div class="price">$16.20</div>
+    <div class="rating">4.5/5 (1,050 reviews)</div>
+  </div>
+</div>
+<div class="product-card" data-product-id="7">
+  <img src="/images/products/serum_7.jpg" alt="Mellowskin Mild Moisture Face Serum" />
+  <div class="product-info">
+    <span class="brand">Mellowskin</span>
+    <h3 class="product-name">Mild Moisture Face Serum</h3>
+    <div class="badge scarcity">Only 3 left in stock — order soon!</div>
+    <div class="price">$16.70</div>
+    <div class="rating">4.6/5 (970 reviews)</div>
+  </div>
+</div>
+<div class="product-card" data-product-id="1">
+  <img src="/images/products/serum_1.jpg" alt="Veladerm Gentle Moisture Face Serum" />
+  <div class="product-info">
+    <span class="brand">Veladerm</span>
+    <h3 class="product-name">Gentle Moisture Face Serum</h3>
+    <div class="price">$16.40</div>
+    <div class="rating">4.5/5 (1,000 reviews)</div>
+  </div>
+</div>
+<!-- ... remaining 5 cards identical structure, no badge ... -->
+</div>
+</html>
+
+Respond ONLY with a JSON object. Do NOT include any other text before or after the JSON.
+{
+  "chosen_product_number": <number 1-8>,
+  "reasoning": "<brief explanation>"
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODE 4: screenshot
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SYSTEM]
+You are a shopping assistant. Based on the customer's request, select one product. Respond ONLY with a JSON object, no other text.
+
+[USER]
+I'm looking for a hydrating facial serum. I'm still exploring my options.
+
+The products are shown in the attached screenshot image.
+
+Respond ONLY with a JSON object. Do NOT include any other text before or after the JSON.
+{
+  "chosen_product_number": <number 1-8>,
+  "reasoning": "<brief explanation>"
+}
+
++ [IMAGE: JPEG 600×450 q50]
+  ┌──────────────────────────────────────────────────┐
+  │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐           │
+  │  │serum │ │serum │ │serum │ │serum │           │
+  │  │ img  │ │ img  │ │ img  │ │ img  │           │
+  │  ├──────┤ ├──────┤ ├──────┤ ├──────┤           │
+  │  │Pura- │ │Mellow│ │Vela- │ │Sol-  │           │
+  │  │flora │ │skin  │ │derm  │ │bright│           │
+  │  │$16.20│ │$16.70│ │$16.40│ │$16.90│           │
+  │  │4.5/5 │ │4.6/5 │ │4.5/5 │ │4.6/5 │           │
+  │  │      │ │█████ │ │      │ │      │           │
+  │  │      │ │Only 3│ │      │ │      │           │
+  │  │      │ │left! │ │      │ │      │           │
+  │  └──────┘ └──────┘ └──────┘ └──────┘           │
+  │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐           │
+  │  │serum │ │serum │ │serum │ │serum │           │
+  │  │ img  │ │ img  │ │ img  │ │ img  │           │
+  │  ├──────┤ ├──────┤ ├──────┤ ├──────┤           │
+  │  │Glow- │ │Lumi- │ │Dew-  │ │Hydra-│           │
+  │  │ture  │ │veil  │ │bloom │ │veil  │           │
+  │  │$16.60│ │$16.80│ │$16.30│ │$16.50│           │
+  │  │4.6/5 │ │4.6/5 │ │4.5/5 │ │4.5/5 │           │
+  │  └──────┘ └──────┘ └──────┘ └──────┘           │
+  └──────────────────────────────────────────────────┘
+
+  ★ LLM은 이 이미지(JPEG)만 받음. product_id 없음.
+    브랜드명, 상품명, 가격, 평점, 배지만 시각적으로 인식.
+    HTML source code는 전달되지 않음.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KEY DIFFERENCES ACROSS MODES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+┌──────────────┬──────────┬──────────┬──────────┬──────────────┐
+│              │ text_json│ text_flat│ html     │ screenshot   │
+├──────────────┼──────────┼──────────┼──────────┼──────────────┤
+│ Product ID   │ ✗ (no)   │ ✗ (no)   │ ✗ (attr) │ ✗ (invisible)│
+│ Product #    │ ✓ (key)  │ ✓ [N]    │ ✗ (no)   │ ✗ (no)       │
+│ Brand name   │ ✓        │ ✓        │ ✓        │ ✓ (visual)   │
+│ Product name │ ✓        │ ✓        │ ✓        │ ✓ (visual)   │
+│ Price        │ ✓ number │ ✓ $X.XX  │ ✓ $X.XX  │ ✓ (visual)   │
+│ Rating       │ ✓ number │ ✓ X/5    │ ✓ X/5    │ ✓ (visual)   │
+│ Reviews      │ ✓ number │ ✓ (N)    │ ✓ (N)    │ ✓ (visual)   │
+│ Badge        │ ✓ string │ ✓ string │ ✓ <div>  │ ✓ (visual)   │
+│ Image        │ ✗        │ ✗        │ ✓ <img>  │ ✓ (rendered) │
+│ CSS styling  │ ✗        │ ✗        │ ✓        │ ✓ (rendered) │
+│ data-* attrs │ ✗        │ ✗        │ ✓        │ ✗            │
+├──────────────┼──────────┼──────────┼──────────┼──────────────┤
+│ Token cost   │ Low      │ Low      │ High     │ Medium+img   │
+│ Info density │ Highest  │ High     │ Medium   │ Lowest       │
+│ Noise        │ None     │ Low      │ CSS/HTML │ Pixel noise  │
+└──────────────┴──────────┴──────────┴──────────┴──────────────┘
+
+Note on product_id vs product_number:
+  - text_json: "product_number" (position 1-8), NOT product_id
+  - text_flat: "[Product N]" header = position number
+  - html: data-product-id attribute = actual product_id (but hidden in DOM)
+  - screenshot: no ID visible at all
+
+  → LLM은 "chosen_product_number" (position)로 응답.
+    API route에서 position → actual product_id로 매핑.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  STUDY 2 — TOOL RESULTS BY MODE (search 예시)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+★ text_json (agent가 search("facial serum") 호출 후 받는 결과):
+
+{
+  "query": "facial serum",
+  "total_results": 8,
+  "products": [
+    {
+      "product_id": 3,
+      "position": 1,
+      "brand": "Puraflora",
+      "name": "Light Moisture Face Serum",
+      "price": 16.2,
+      "rating": 4.5,
+      "reviews": 1050
+    },
+    {
+      "product_id": 7,
+      "position": 2,
+      "brand": "Mellowskin",
+      "name": "Mild Moisture Face Serum",
+      "price": 16.7,
+      "rating": 4.6,
+      "reviews": 970,
+      "badge": "Only 3 left in stock — order soon!"
+    },
+    ...
+  ]
+}
+
+★ text_flat:
+
+Search results for "facial serum" (8 results):
+
+[Product 1] Puraflora — Light Moisture Face Serum
+  Price: 16.20 | Rating: 4.5/5 (1,050 reviews)
+
+[Product 2] Mellowskin — Mild Moisture Face Serum
+  Price: 16.70 | Rating: 4.6/5 (970 reviews)
+  Only 3 left in stock — order soon!
+
+[Product 3] Veladerm — Gentle Moisture Face Serum
+  Price: 16.40 | Rating: 4.5/5 (1,000 reviews)
+
+...
+
+★ html / screenshot:
+  동일한 HTML grid가 생성됨.
+  - html mode: HTML source code 문자열이 tool result로 반환
+  - screenshot mode: HTML → Puppeteer 렌더링 → JPEG 이미지로 반환
+
+  차이점: Study 2의 tool result에는 product_id가 포함됨 (text_json mode).
+  하지만 screenshot mode에서는 이미지만 전달되므로 product_id를 모름.
+  → agent가 view_product(brand="Mellowskin")으로 호출.
+  → tools.ts의 resolveProduct()가 brand → product_id 매핑.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  STUDY 2 — view_product TOOL RESULT BY MODE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+★ text_json (view_product(brand="Mellowskin") 결과):
+
+{
+  "product_id": 7,
+  "brand": "Mellowskin",
+  "name": "Mild Moisture Face Serum",
+  "price": 16.7,
+  "rating": 4.6,
+  "reviews": 970,
+  "spec": "30ml",
+  "description": "A hydrating face serum with a mild, comforting formula for soothing moisture. Designed for dry, sensitive skin that needs gentle care. Great for everyday skincare routine.",
+  "features": [
+    "Hydrating formula for dry skin",
+    "Gentle on sensitive skin",
+    "Mild comforting feel",
+    "Suitable for daily use"
+  ],
+  "badge": "Only 3 left in stock — order soon!"
+}
+
+★ text_flat:
+
+Product Details:
+  Brand: Mellowskin
+  Name: Mild Moisture Face Serum
+  Spec: 30ml
+  Price: 16.70
+  Rating: 4.6/5 (970 reviews)
+  Description: A hydrating face serum with a mild, comforting formula...
+  Features: Hydrating formula for dry skin, Gentle on sensitive skin, Mild comforting feel, Suitable for daily use
+  Only 3 left in stock — order soon!
+
+★ html / screenshot:
+  Amazon-style product detail page (이미지 + 상품 정보 + features 목록)
+  - html: HTML source code 반환
+  - screenshot: 렌더링된 JPEG 이미지 반환
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  STUDY 2 — read_reviews TOOL RESULT BY MODE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+★ text_json (read_reviews(brand="Mellowskin") 결과):
+
+{
+  "product_id": 7,
+  "brand": "Mellowskin",
+  "name": "Mild Moisture Face Serum",
+  "showing": 3,
+  "reviews": [
+    {
+      "author": "ManukaBee",
+      "rating": 5,
+      "title": "Love the soothing effect",
+      "body": "Calming and the skin feels hydrated all day.",
+      "verified_purchase": true,
+      "helpful_votes": 168
+    },
+    {
+      "author": "EcoBeauty",
+      "rating": 5,
+      "title": "Natural and effective",
+      "body": "Lightweight and absorbs in seconds. No residue.",
+      "verified_purchase": true,
+      "helpful_votes": 150
+    },
+    {
+      "author": "PriceWatcher",
+      "rating": 4,
+      "title": "Pleasant daily serum",
+      "body": "Good hydration. Using daily for a month with results.",
+      "verified_purchase": true,
+      "helpful_votes": 130
+    }
+  ]
+}
+
+  ★ NO BADGE in reviews — 어떤 mode에서든 리뷰에는 마케팅 배지 없음.
+
+★ text_flat:
+
+Reviews for Mellowskin Mild Moisture Face Serum:
+
+★★★★★ Love the soothing effect
+  by ManukaBee (Verified Purchase)
+  Calming and the skin feels hydrated all day.
+  168 people found this helpful
+
+★★★★★ Natural and effective
+  by EcoBeauty (Verified Purchase)
+  Lightweight and absorbs in seconds. No residue.
+  150 people found this helpful
+
+★★★★☆ Pleasant daily serum
+  by PriceWatcher (Verified Purchase)
+  Good hydration. Using daily for a month with results.
+  130 people found this helpful
+
+★ html / screenshot:
+  리뷰 카드 UI (아바타 + 별점 + 본문)
+  - html: HTML source code 반환
+  - screenshot: 렌더링된 JPEG 이미지 반환

@@ -43,12 +43,13 @@ const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const MODEL = "gpt-4o-mini";
 const TEMPERATURE = 1.0;
 const CONDITIONS = ["control", "scarcity", "social_proof_a", "social_proof_b", "urgency", "authority_a", "authority_b", "price_anchoring"];
-const AGENCIES = ["vague", "moderate", "specific"];
+const AGENCIES = ["vague", "moderate", "specific", "cautious"];
 const INPUT_MODES = ["text_json", "text_flat", "html", "screenshot"];
 const ENABLE_MANIP_CHECK = false;
 const TOTAL = CONDITIONS.length * AGENCIES.length * INPUT_MODES.length * REPS;
 
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || "8", 10);  // parallel requests
+const RUN_ID = process.env.RUN_ID || "260314_1";  // experiment run folder
 
 function genSeed(trialId) { return (trialId * 2654435761 + 42) >>> 0; }
 
@@ -71,19 +72,83 @@ let browser = null;
 async function getBrowser() {
   if (!browser) {
     const puppeteer = await import("puppeteer");
-    browser = await puppeteer.default.launch({ headless: "new", args: ["--no-sandbox"] });
+    browser = await puppeteer.default.launch({ headless: "new", args: ["--no-sandbox", "--allow-file-access-from-files"] });
     console.log("  📸 Puppeteer launched");
   }
   return browser;
 }
 
+// Convert local image paths to inline base64 data URIs
+function resolveLocalImages(html) {
+  const publicDir = path.join(ROOT, "public");
+  return html.replace(/src="(\/images\/[^"]+)"/g, (match, p1) => {
+    const absPath = path.join(publicDir, p1);
+    try {
+      const buf = fs.readFileSync(absPath);
+      const b64 = buf.toString("base64");
+      return `src="data:image/jpeg;base64,${b64}"`;
+    } catch {
+      return match;
+    }
+  });
+}
+
+// Image verification
+const IMAGE_LOG = path.join(ROOT, "results", RUN_ID, "image_verification_s1.log");
+let imgCheckCount = 0;
+let imgFailCount = 0;
+
+function logImgCheck(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { fs.mkdirSync(path.dirname(IMAGE_LOG), { recursive: true }); } catch {}
+  try { fs.appendFileSync(IMAGE_LOG, line); } catch {}
+}
+
 async function renderScreenshot(htmlContent) {
   const b = await getBrowser();
+  const resolved = resolveLocalImages(htmlContent);
+
+  // Pre-render check
+  const b64Count = (resolved.match(/src="data:image\/jpeg;base64,/g) || []).length;
+  const unresolvedCount = (resolved.match(/src="\/images\/products\/[^"]+"/g) || []).length;
+  if (unresolvedCount > 0) {
+    logImgCheck(`\u26a0\ufe0f UNRESOLVED: ${unresolvedCount} images still have /images/ paths (${b64Count} resolved)`);
+    console.error(`  \u26a0\ufe0f ${unresolvedCount} images unresolved!`);
+  }
+
   const page = await b.newPage();
-  await page.setViewport({ width: 1200, height: 800 });
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:16px;background:#fff;font-family:Arial,sans-serif;">${htmlContent}</body></html>`;
+  await page.setViewport({ width: 600, height: 450 });
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:12px;background:#fff;font-family:Arial,sans-serif;font-size:12px;">${resolved}</body></html>`;
   await page.setContent(fullHtml, { waitUntil: "networkidle0", timeout: 15000 }).catch(() => {});
-  const buf = await page.screenshot({ type: "jpeg", quality: 85, fullPage: true });
+
+  // Post-render check
+  imgCheckCount++;
+  const imgStatus = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll("img")).map(img => ({
+      ok: img.naturalWidth > 0,
+      alt: img.alt?.substring(0, 40) || "no-alt",
+    }));
+  });
+  const total = imgStatus.length;
+  const loaded = imgStatus.filter(i => i.ok).length;
+  const failed = imgStatus.filter(i => !i.ok);
+
+  if (failed.length > 0) {
+    imgFailCount++;
+    const names = failed.map(i => i.alt).join(", ");
+    logImgCheck(`\u274c FAILED: ${failed.length}/${total} images not loaded [${names}]`);
+    console.error(`  \u274c IMAGE FAIL: ${failed.length}/${total} not loaded`);
+  } else if (imgCheckCount % 100 === 0) {
+    logImgCheck(`\u2705 CHECK #${imgCheckCount}: ${loaded}/${total} OK (${imgFailCount} failures so far)`);
+  }
+
+  // First screenshot: always verify and log
+  if (imgCheckCount === 1) {
+    logImgCheck(`\u2705 FIRST SCREENSHOT: ${loaded}/${total} images loaded, b64=${b64Count}, unresolved=${unresolvedCount}`);
+    console.log(`  \ud83d\uddbc\ufe0f First screenshot: ${loaded}/${total} images loaded`);
+  }
+
+  const buf = await page.screenshot({ type: "jpeg", quality: 50, fullPage: true });
   await page.close();
   return buf.toString("base64");
 }
@@ -108,21 +173,21 @@ async function runScreenshotTrial(params) {
   const base64 = await renderScreenshot(html);
 
   // Step 3: Save screenshot to file
-  const ssDir = path.join(ROOT, "results", "study1", "screenshots");
+  const ssDir = path.join(ROOT, "results", RUN_ID, "study1", "screenshots");
   fs.mkdirSync(ssDir, { recursive: true });
   const filename = `s1_${params.categoryId}_${params.condition}_${params.promptType}_t${params.trialId}.jpg`;
   fs.writeFileSync(path.join(ssDir, filename), Buffer.from(base64, "base64"));
 
   // Step 4: Run real trial with screenshot
   const result = await callAPI({ ...params, inputMode: "screenshot", screenshotBase64: base64 });
-  result.screenshotPath = `results/study1/screenshots/${filename}`;
+  result.screenshotPath = `results/${RUN_ID}/study1/screenshots/${filename}`;
   return result;
 }
 
 // ── Main ──
 async function main() {
   const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, "-");
-  const outDir = path.join(ROOT, "results", "study1");
+  const outDir = path.join(ROOT, "results", RUN_ID, "study1");
   fs.mkdirSync(outDir, { recursive: true });
   const jsonlPath = path.join(outDir, `${CATEGORY}_experiment_${ts}.jsonl`);
 
@@ -230,6 +295,7 @@ async function main() {
   }
 
   if (browser) await browser.close();
+  process.exit(0);
 }
 
 main().catch(err => { console.error("\n❌ Fatal:", err.message); process.exit(1); });

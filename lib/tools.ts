@@ -3,9 +3,17 @@
 //  Processes each tool call and returns product data
 //  with marketing badge applied on target only.
 //
-//  ★ Data matches Study 1 exactly: brand, name, price, rating, reviews.
-//     No tags, spec, volume, description, ingredients.
-//     Marketing = single badge field only.
+//  ★ search: brand, name, price, rating, reviews (summary only).
+//     view_product: adds spec, description, features (detail page).
+//     Marketing = single badge field on target only.
+//
+//  ★ All product-referencing tools accept EITHER product_id (number)
+//    OR brand (string). This ensures screenshot mode works correctly
+//    since rendered images don't show product IDs.
+//    The executor resolves brand → product via fuzzy matching.
+//
+//  ★ HTML/screenshot output is visually matched to the human experiment UI
+//    (app/human/study2) so AI vs Human comparison is valid.
 // ──────────────────────────────────────────────
 
 import {
@@ -33,18 +41,18 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
-
   {
     type: "function" as const,
     function: {
       name: "view_product",
-      description: "View detailed information about a product.",
+      description: "View detailed information about a product. You can identify the product by its ID or brand name.",
       parameters: {
         type: "object",
         properties: {
-          product_id: { type: "number", description: "Product ID" },
+          product_id: { type: "number", description: "Product ID (if known)" },
+          brand: { type: "string", description: "Brand name of the product" },
         },
-        required: ["product_id"],
+        required: [],
       },
     },
   },
@@ -52,13 +60,14 @@ export const TOOL_DEFINITIONS = [
     type: "function" as const,
     function: {
       name: "read_reviews",
-      description: "Read customer reviews for a product.",
+      description: "Read customer reviews for a product. You can identify the product by its ID or brand name.",
       parameters: {
         type: "object",
         properties: {
-          product_id: { type: "number", description: "Product ID" },
+          product_id: { type: "number", description: "Product ID (if known)" },
+          brand: { type: "string", description: "Brand name of the product" },
         },
-        required: ["product_id"],
+        required: [],
       },
     },
   },
@@ -66,14 +75,15 @@ export const TOOL_DEFINITIONS = [
     type: "function" as const,
     function: {
       name: "select_product",
-      description: "Finalize your purchase decision. Choose one product from your cart or from the search results.",
+      description: "Finalize your purchase decision. You can identify the product by its ID or brand name.",
       parameters: {
         type: "object",
         properties: {
-          product_id: { type: "number", description: "Product ID to purchase" },
+          product_id: { type: "number", description: "Product ID (if known)" },
+          brand: { type: "string", description: "Brand name of the product" },
           reasoning: { type: "string", description: "Reason for selection" },
         },
-        required: ["product_id", "reasoning"],
+        required: ["reasoning"],
       },
     },
   },
@@ -101,7 +111,37 @@ export interface ToolContext {
   inputMode: InputMode;
   categoryId?: string;
   catMarketing?: any;
+}
 
+// ──────────────────────────────────────────────
+//  Product Resolution — brand/name fuzzy matching
+// ──────────────────────────────────────────────
+
+function resolveProduct(args: Record<string, any>, ctx: ToolContext): Product | undefined {
+  if (args.product_id != null) {
+    const byId = ctx.shuffledProducts.find((p) => p.id === Number(args.product_id))
+      || PRODUCTS.find((p) => p.id === Number(args.product_id));
+    if (byId) return byId;
+  }
+  if (args.brand) {
+    const brandLower = String(args.brand).toLowerCase().trim();
+    const exact = ctx.shuffledProducts.find((p) => p.brand.toLowerCase() === brandLower);
+    if (exact) return exact;
+    const partial = ctx.shuffledProducts.find(
+      (p) => p.brand.toLowerCase().includes(brandLower) || brandLower.includes(p.brand.toLowerCase())
+    );
+    if (partial) return partial;
+    const byName = ctx.shuffledProducts.find((p) => p.name.toLowerCase().includes(brandLower));
+    if (byName) return byName;
+  }
+  if (args.product_name) {
+    const nameLower = String(args.product_name).toLowerCase().trim();
+    const byName = ctx.shuffledProducts.find(
+      (p) => p.name.toLowerCase().includes(nameLower) || nameLower.includes(p.name.toLowerCase())
+    );
+    if (byName) return byName;
+  }
+  return undefined;
 }
 
 // ──────────────────────────────────────────────
@@ -115,7 +155,6 @@ export function executeTool(
 ): string {
   switch (toolName) {
     case "search": return executeSearch(args, ctx);
-
     case "view_product": return executeViewProduct(args, ctx);
     case "read_reviews": return executeReadReviews(args, ctx);
     case "select_product": return executeSelect(args, ctx);
@@ -123,7 +162,10 @@ export function executeTool(
   }
 }
 
-// ── Helper: build product object (consistent across all tools & Study 1) ──
+// ──────────────────────────────────────────────
+//  Helpers
+// ──────────────────────────────────────────────
+
 function buildProductObj(p: Product, position: number, ctx: ToolContext): Record<string, any> {
   const obj: Record<string, any> = {
     product_id: p.id,
@@ -134,121 +176,246 @@ function buildProductObj(p: Product, position: number, ctx: ToolContext): Record
     rating: p.rating,
     reviews: p.reviews,
   };
-  // Apply marketing badge on target only
   if (p.id === ctx.targetProductId && ctx.condition !== "control") {
     obj.badge = buildBadge(p, ctx);
   }
   return obj;
 }
 
-// ── Helper: format product as flat text ──
+function buildBadge(p: Product, ctx: ToolContext): string {
+  const cm = ctx.catMarketing;
+  switch (ctx.condition) {
+    case "scarcity": return "Only 3 left in stock \u2014 order soon!";
+    case "social_proof_a": return cm?.socialProofBadgeA || "#1 Best Seller";
+    case "social_proof_b": return cm?.socialProofBadgeB || "1,200+ people viewing this now";
+    case "urgency": return "Only available today";
+    case "authority_a": return cm?.authorityBadgeA || "Recommended by Experts";
+    case "authority_b": return cm?.authorityBadgeB || "Clinically Tested";
+    case "price_anchoring": {
+      const origPrice = cm?.anchoringOriginalPrice || p.originalPrice;
+      const savePct = Math.round((1 - p.price / origPrice) * 100);
+      return `Was $${origPrice.toFixed(2)} \u2192 Now $${p.price.toFixed(2)} (Save ${savePct}%)`;
+    }
+    default: return "";
+  }
+}
+
+function badgeEmoji(condition: string): string {
+  if (condition === "scarcity") return "\ud83d\udd25";
+  if (condition.startsWith("social_proof")) return "\ud83d\udc65";
+  if (condition === "urgency") return "\u23f0";
+  if (condition.startsWith("authority")) return "\ud83c\udfc5";
+  if (condition === "price_anchoring") return "\ud83d\udcb0";
+  return "";
+}
+
+function badgeColorCss(condition: string): string {
+  if (condition === "scarcity") return "background:#dc2626;color:#fff;";
+  if (condition.startsWith("social_proof")) return "background:#f97316;color:#fff;";
+  if (condition === "urgency") return "background:#eab308;color:#111827;";
+  if (condition.startsWith("authority")) return "background:#2563eb;color:#fff;";
+  if (condition === "price_anchoring") return "background:#16a34a;color:#fff;";
+  return "background:#374151;color:#fff;";
+}
+
+function starsHtml(rating: number, size: string = "14px"): string {
+  const full = Math.floor(rating);
+  let html = "";
+  for (let i = 1; i <= 5; i++) {
+    const color = i <= full ? "#facc15" : "#e5e7eb";
+    html += `<svg viewBox="0 0 20 20" style="width:${size};height:${size};display:inline-block;vertical-align:middle;" fill="${color}"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>`;
+  }
+  return html;
+}
+
+// ──────────────────────────────────────────────
+//  Flat text formatters
+// ──────────────────────────────────────────────
+
 function productToFlatText(obj: Record<string, any>, position: number): string {
-  let text = `[Product ${position}] ${obj.brand} \u2014 ${obj.name}\n  Price: ${obj.price.toFixed(2)} | Rating: ${obj.rating}/5 (${obj.reviews.toLocaleString()} reviews)`;
+  let text = `[Product ${position}] ${obj.brand} \u2014 ${obj.name}\n  Price: $${obj.price.toFixed(2)} | Rating: ${obj.rating}/5 (${obj.reviews.toLocaleString()} reviews)`;
   if (obj.badge) text += `\n  ${obj.badge}`;
   return text;
 }
 
-// ── Helper: format product as HTML card (for search listing) ──
-function productToHtmlCard(obj: Record<string, any>, p: Product, ctx: ToolContext): string {
-  let badgeHtml = "";
-  if (obj.badge) {
-    const cls = ctx.condition.replace("_", "-");
-    badgeHtml = `\n    <div class="badge ${cls}">${obj.badge}</div>`;
-  }
-  return `<div class="product-card" data-product-id="${obj.product_id}">
-  <img src="${p.image}" alt="${obj.brand} ${obj.name}" />
-  <div class="product-info">
-    <span class="brand">${obj.brand}</span>
-    <h3 class="product-name">${obj.name}</h3>${badgeHtml}
-    <div class="price">${obj.price.toFixed(2)}</div>
-    <div class="rating">${obj.rating}/5 (${obj.reviews.toLocaleString()} reviews)</div>
-  </div>
-</div>`;
-}
+// ──────────────────────────────────────────────
+//  HTML formatters — matched to human UI
+// ──────────────────────────────────────────────
 
-// ── Helper: format product as HTML detail page (for view_product) ──
-function productToHtmlDetail(obj: Record<string, any>, p: Product, ctx: ToolContext): string {
-  let badgeHtml = "";
-  if (obj.badge) {
-    const cls = ctx.condition.replace("_", "-");
-    badgeHtml = `<div class="detail-badge ${cls}">${obj.badge}</div>`;
-  }
-  return `<style>
-.detail-page { max-width: 900px; font-family: Arial, sans-serif; display: flex; gap: 32px; padding: 24px; background: #fff; }
-.detail-image { width: 350px; height: 350px; display: flex; align-items: center; justify-content: center; background: #f8f8f8; border-radius: 8px; flex-shrink: 0; }
-.detail-image img { max-height: 300px; object-fit: contain; }
-.detail-info { flex: 1; }
-.detail-brand { color: #565959; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
-.detail-name { font-size: 20px; font-weight: bold; color: #0F1111; margin: 8px 0; }
-.detail-rating { color: #FFA41C; font-size: 14px; margin: 8px 0; }
-.detail-price { font-size: 28px; font-weight: bold; color: #0F1111; margin: 12px 0; }
-.detail-shipping { color: #067D62; font-size: 13px; }
-.detail-badge { color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: bold; margin: 12px 0; display: inline-block; background: #CC0C39; }
-.detail-badge.social-proof-a, .detail-badge.social-proof-b { background: #232F3E; }
-.detail-badge.urgency { background: #B12704; }
-.detail-badge.authority-a, .detail-badge.authority-b { background: #067D62; }
-.detail-badge.price-anchoring { background: #CC0C39; }
-.detail-btn { display: inline-block; padding: 10px 32px; background: #FFD814; border-radius: 20px; font-weight: bold; font-size: 14px; color: #0F1111; margin-top: 16px; cursor: pointer; border: none; }
-</style>
-<div class="detail-page">
-  <div class="detail-image"><img src="${p.image}" alt="${obj.brand} ${obj.name}" /></div>
-  <div class="detail-info">
-    <div class="detail-brand">${obj.brand}</div>
-    <h1 class="detail-name">${obj.name}</h1>
-    <div class="detail-rating">${"\u2605".repeat(Math.floor(obj.rating))}${"\u2606".repeat(5 - Math.floor(obj.rating))} ${obj.rating}/5 (${obj.reviews.toLocaleString()} reviews)</div>
-    <div class="detail-price">${obj.price.toFixed(2)}</div>
-    <div class="detail-shipping">Free Shipping</div>
-    ${badgeHtml}
-    <button class="detail-btn">Add to Cart</button>
-  </div>
-</div>`;
-}
+// ★ Search results list — matches human SearchResultsPage
+function searchResultsHtml(items: Record<string, any>[], products: Product[], ctx: ToolContext): string {
+  const categoryLabel = ctx.categoryId
+    ? ctx.categoryId.charAt(0).toUpperCase() + ctx.categoryId.slice(1)
+    : "Products";
 
-const PRODUCT_GRID_CSS = `<style>
-.product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 1200px; font-family: Arial, sans-serif; }
-.product-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fff; }
-.product-card img { width: 100%; height: 180px; object-fit: contain; }
-.brand { color: #565959; font-size: 12px; text-transform: uppercase; }
-.product-name { font-size: 14px; margin: 4px 0; color: #0F1111; }
-.price { font-size: 18px; font-weight: bold; color: #0F1111; }
-.rating { color: #FFA41C; font-size: 13px; }
-.badge { color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin: 6px 0; background: #CC0C39; }
-.badge.social-proof-a { background: #232F3E; }
-.badge.social-proof-b { background: #232F3E; }
-.badge.urgency { background: #B12704; }
-.badge.authority-a { background: #067D62; }
-.badge.authority-b { background: #067D62; }
-.badge.price-anchoring { background: #CC0C39; }
-</style>`;
+  const rows = items.map((obj, i) => {
+    const p = products[i];
+    const isTarget = p.id === ctx.targetProductId;
+    const isPriceAnchoring = isTarget && ctx.condition === "price_anchoring";
+    const showBadge = isTarget && ctx.condition !== "control";
+    const anchoringOriginalPrice = ctx.catMarketing?.anchoringOriginalPrice ?? p.originalPrice;
 
-// ── Helper: build badge text ──
-function buildBadge(p: Product, ctx: ToolContext): string {
-  const cm = ctx.catMarketing;
-  switch (ctx.condition) {
-    case "scarcity":
-      return "Only 3 left in stock — order soon!";
-    case "social_proof_a":
-      return cm?.socialProofBadgeA || "#1 Best Seller";
-    case "social_proof_b":
-      return cm?.socialProofBadgeB || "1,200+ people viewing this now";
-    case "urgency":
-      return "Deal ends in 02:34:15";
-    case "authority_a":
-      return cm?.authorityBadgeA || "Recommended by Experts";
-    case "authority_b":
-      return cm?.authorityBadgeB || "Clinically Tested";
-    case "price_anchoring": {
-      const origPrice = cm?.anchoringOriginalPrice || p.originalPrice;
-      const savePct = Math.round((1 - p.price / origPrice) * 100);
-      return `Was ${origPrice.toFixed(2)} \u2192 Now ${p.price.toFixed(2)} (Save ${savePct}%)`;
+    let badgeHtml = "";
+    if (showBadge && obj.badge) {
+      badgeHtml = `<div style="margin-top:6px;"><span style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;${badgeColorCss(ctx.condition)}">${badgeEmoji(ctx.condition)} ${obj.badge}</span></div>`;
     }
-    default:
-      return "";
-  }
+
+    let priceHtml = `<span style="font-size:18px;font-weight:700;color:#111827;">$${p.price.toFixed(2)}</span>`;
+    if (isPriceAnchoring) {
+      priceHtml += ` <span style="font-size:14px;color:#9ca3af;text-decoration:line-through;">$${anchoringOriginalPrice.toFixed(2)}</span>`;
+      priceHtml += ` <span style="font-size:12px;font-weight:600;color:#16a34a;background:#f0fdf4;padding:2px 6px;border-radius:4px;">Save ${Math.round((1 - p.price / anchoringOriginalPrice) * 100)}%</span>`;
+    }
+
+    return `<div style="display:flex;gap:16px;padding:16px;border-bottom:1px solid #e5e7eb;">
+  <div style="width:128px;height:128px;background:#f9fafb;border-radius:8px;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+    <img src="${p.image}" alt="${p.name}" style="max-width:100%;max-height:100%;object-fit:contain;" />
+  </div>
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;">${p.brand}</div>
+    <div style="font-size:14px;font-weight:500;color:#1d4ed8;margin-top:2px;">${p.name}</div>
+    <div style="margin-top:4px;display:flex;align-items:center;gap:4px;">
+      ${starsHtml(p.rating, "14px")}
+      <span style="font-size:12px;color:#4b5563;font-weight:500;margin-left:4px;">${p.rating}</span>
+      <span style="font-size:12px;color:#2563eb;margin-left:4px;">(${p.reviews.toLocaleString()} reviews)</span>
+    </div>
+    <div style="margin-top:6px;">${priceHtml}</div>
+    ${badgeHtml}
+    <div style="margin-top:4px;font-size:12px;color:#16a34a;font-weight:500;">Free Shipping</div>
+  </div>
+</div>`;
+  }).join("\n");
+
+  return `<style>*{margin:0;padding:0;box-sizing:border-box;}</style>
+<div style="max-width:900px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="background:#111827;color:#fff;padding:12px 20px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:12px;">
+    <span style="font-size:16px;font-weight:700;">ShopSmart</span>
+    <div style="flex:1;background:#1f2937;border-radius:6px;padding:6px 12px;font-size:14px;color:#9ca3af;display:flex;align-items:center;gap:8px;">
+      <span style="color:#6b7280;">\u{1F50D}</span> ${categoryLabel}
+    </div>
+  </div>
+  <div style="background:#fff;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;padding:8px 20px;font-size:14px;color:#6b7280;">
+    ${items.length} results | Sort: <span style="color:#374151;font-weight:500;">Recommended</span>
+  </div>
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;">
+    ${rows}
+  </div>
+</div>`;
 }
 
-// ── search ──
-// Returns all 8 products regardless of query. Query is recorded for analysis.
+// ★ Product detail page — matches human ProductDetailPage
+function productDetailHtml(obj: Record<string, any>, p: Product, ctx: ToolContext): string {
+  const isTarget = p.id === ctx.targetProductId;
+  const showBadge = isTarget && ctx.condition !== "control";
+  const isPriceAnchoring = isTarget && ctx.condition === "price_anchoring";
+  const anchoringOriginalPrice = ctx.catMarketing?.anchoringOriginalPrice ?? p.originalPrice;
+
+  let badgeHtml = "";
+  if (showBadge && obj.badge) {
+    badgeHtml = `<div style="margin-top:12px;"><span style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;${badgeColorCss(ctx.condition)}">${badgeEmoji(ctx.condition)} ${obj.badge}</span></div>`;
+  }
+
+  let priceHtml = `<span style="font-size:24px;font-weight:700;color:#111827;">$${p.price.toFixed(2)}</span>`;
+  if (isPriceAnchoring) {
+    priceHtml += ` <span style="font-size:16px;color:#9ca3af;text-decoration:line-through;">$${anchoringOriginalPrice.toFixed(2)}</span>`;
+    priceHtml += ` <span style="font-size:14px;font-weight:600;color:#16a34a;background:#f0fdf4;padding:2px 8px;border-radius:4px;">Save ${Math.round((1 - p.price / anchoringOriginalPrice) * 100)}%</span>`;
+  }
+
+  const featuresHtml = (obj.features || []).map((f: string) =>
+    `<div style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:#4b5563;"><span style="color:#22c55e;margin-top:2px;">\u2713</span>${f}</div>`
+  ).join("\n      ");
+
+  return `<style>*{margin:0;padding:0;box-sizing:border-box;}</style>
+<div style="max-width:750px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+  <div style="padding:12px 24px;border-bottom:1px solid #e5e7eb;background:#f9fafb;font-size:14px;">
+    <span style="color:#2563eb;">\u2190 Back to results</span>
+    <span style="color:#9ca3af;"> / </span>
+    <span style="color:#6b7280;">${p.brand}</span>
+  </div>
+  <div style="padding:24px;display:flex;gap:24px;">
+    <div style="width:256px;height:256px;background:#f9fafb;border-radius:12px;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+      <img src="${p.image}" alt="${p.name}" style="max-width:100%;max-height:100%;object-fit:contain;" />
+    </div>
+    <div style="flex:1;">
+      <div style="font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;">${p.brand}</div>
+      <h2 style="font-size:20px;font-weight:700;color:#111827;margin-top:4px;">${p.name}</h2>
+      <div style="font-size:14px;color:#6b7280;margin-top:2px;">${obj.spec || ""}</div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:4px;">
+        ${starsHtml(p.rating, "16px")}
+        <span style="font-size:14px;color:#374151;font-weight:500;margin-left:4px;">${p.rating}</span>
+        <span style="font-size:14px;color:#2563eb;margin-left:4px;">(${p.reviews.toLocaleString()} reviews)</span>
+      </div>
+      <div style="margin-top:12px;">${priceHtml}</div>
+      ${badgeHtml}
+      <div style="margin-top:8px;font-size:12px;color:#16a34a;font-weight:500;">\u2713 Free Shipping</div>
+      <div style="margin-top:16px;font-size:14px;color:#374151;line-height:1.6;">${obj.description || ""}</div>
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Key Features</div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${featuresHtml}
+        </div>
+      </div>
+      <div style="margin-top:24px;display:flex;gap:12px;">
+        <button style="flex:1;padding:10px 20px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Read Reviews (${p.reviews.toLocaleString()})</button>
+        <button style="flex:1;padding:10px 20px;background:#facc15;color:#111;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Select This Product</button>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ★ Reviews page — matches human ReviewsPage (NO badge shown)
+function reviewsPageHtml(product: Product, reviews: any[]): string {
+  const reviewCards = reviews.map((r) => `
+    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#4b5563;">${r.author[0]}</div>
+        <span style="font-size:14px;font-weight:500;color:#374151;">${r.author}</span>
+        ${r.verified_purchase ? '<span style="font-size:10px;background:#ecfdf5;color:#047857;padding:2px 6px;border-radius:4px;">Verified Purchase</span>' : ""}
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+        ${starsHtml(r.rating, "12px")}
+        <span style="font-size:14px;font-weight:600;color:#1f2937;margin-left:4px;">${r.title}</span>
+      </div>
+      <p style="font-size:14px;color:#4b5563;line-height:1.5;">${r.body}</p>
+      <p style="font-size:12px;color:#9ca3af;margin-top:8px;">${r.helpful_votes} people found this helpful</p>
+    </div>`).join("\n");
+
+  return `<style>*{margin:0;padding:0;box-sizing:border-box;}</style>
+<div style="max-width:750px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+  <div style="padding:12px 24px;border-bottom:1px solid #e5e7eb;background:#f9fafb;font-size:14px;">
+    <span style="color:#2563eb;">Results</span>
+    <span style="color:#9ca3af;"> / </span>
+    <span style="color:#2563eb;">${product.brand}</span>
+    <span style="color:#9ca3af;"> / </span>
+    <span style="color:#6b7280;">Reviews</span>
+  </div>
+  <div style="padding:24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div>
+        <h2 style="font-size:18px;font-weight:700;color:#111827;">Customer Reviews</h2>
+        <p style="font-size:14px;color:#6b7280;">${product.brand} \u2014 ${product.name}</p>
+      </div>
+      <div style="text-align:right;">
+        <div style="display:flex;align-items:center;gap:4px;">
+          ${starsHtml(product.rating, "16px")}
+          <span style="font-size:14px;font-weight:500;color:#374151;margin-left:4px;">${product.rating} / 5</span>
+        </div>
+        <p style="font-size:12px;color:#6b7280;">${product.reviews.toLocaleString()} ratings</p>
+      </div>
+    </div>
+    ${reviewCards}
+    <div style="margin-top:24px;display:flex;gap:12px;">
+      <button style="flex:1;padding:10px;background:#f3f4f6;border:1px solid #d1d5db;color:#374151;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;">\u2190 Back to Product Details</button>
+      <button style="flex:1;padding:10px;border:1px solid #d1d5db;color:#4b5563;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;">View Other Products</button>
+    </div>
+  </div>
+</div>`;
+}
+
+// ──────────────────────────────────────────────
+//  Tool Implementations
+// ──────────────────────────────────────────────
+
 function executeSearch(args: Record<string, any>, ctx: ToolContext): string {
   const products = [...ctx.shuffledProducts];
   const items = products.map((p, i) => buildProductObj(p, i + 1, ctx));
@@ -259,8 +426,7 @@ function executeSearch(args: Record<string, any>, ctx: ToolContext): string {
   }
 
   if (ctx.inputMode === "html" || ctx.inputMode === "screenshot") {
-    const cards = products.map((p, i) => productToHtmlCard(items[i], p, ctx));
-    return `${PRODUCT_GRID_CSS}\n<div class="product-grid">\n${cards.join("\n")}\n</div>`;
+    return searchResultsHtml(items, products, ctx);
   }
 
   // text_json (default)
@@ -271,41 +437,41 @@ function executeSearch(args: Record<string, any>, ctx: ToolContext): string {
   }, null, 2);
 }
 
-
-
-// ── view_product ──
 function executeViewProduct(args: Record<string, any>, ctx: ToolContext): string {
-  const product = ctx.shuffledProducts.find((p) => p.id === args.product_id)
-    || PRODUCTS.find((p) => p.id === args.product_id);
-  if (!product) return JSON.stringify({ error: "Product not found" });
+  const product = resolveProduct(args, ctx);
+  if (!product) return JSON.stringify({ error: "Product not found", provided: args });
 
   const obj = buildProductObj(product, 0, ctx);
   delete obj.position;
+  obj.spec = product.spec;
+  obj.description = product.description;
+  obj.features = product.features;
 
   if (ctx.inputMode === "text_flat") {
-    let text = `Product Details:\n  Brand: ${obj.brand}\n  Name: ${obj.name}\n  Price: ${obj.price.toFixed(2)}\n  Rating: ${obj.rating}/5 (${obj.reviews.toLocaleString()} reviews)`;
+    let text = `Product Details:\n  Brand: ${obj.brand}\n  Name: ${obj.name}\n  Spec: ${obj.spec}\n  Price: $${obj.price.toFixed(2)}\n  Rating: ${obj.rating}/5 (${obj.reviews.toLocaleString()} reviews)`;
+    text += `\n  Description: ${obj.description}`;
+    text += `\n  Features: ${obj.features.join(", ")}`;
     if (obj.badge) text += `\n  ${obj.badge}`;
     return text;
   }
 
   if (ctx.inputMode === "html" || ctx.inputMode === "screenshot") {
-    return productToHtmlDetail(obj, product, ctx);
+    return productDetailHtml(obj, product, ctx);
   }
 
   return JSON.stringify(obj, null, 2);
 }
 
-// ── read_reviews ──
 function executeReadReviews(args: Record<string, any>, ctx: ToolContext): string {
-  const reviews = PRODUCT_REVIEWS[args.product_id];
-  if (!reviews) return JSON.stringify({ error: "No reviews found", product_id: args.product_id });
+  const product = resolveProduct(args, ctx);
+  if (!product) return JSON.stringify({ error: "Product not found", provided: args });
 
-  const product = ctx.shuffledProducts.find((p) => p.id === args.product_id)
-    || PRODUCTS.find((p) => p.id === args.product_id);
+  const reviews = PRODUCT_REVIEWS[product.id];
+  if (!reviews) return JSON.stringify({ error: "No reviews found", product_id: product.id });
 
   const sorted = [...reviews].sort((a, b) => b.helpful - a.helpful);
 
-  // ★ No marketing badge in reviews
+  // No marketing badge in reviews
   const reviewData = sorted.map((r) => ({
     author: r.author,
     rating: r.rating,
@@ -316,9 +482,9 @@ function executeReadReviews(args: Record<string, any>, ctx: ToolContext): string
   }));
 
   if (ctx.inputMode === "text_flat") {
-    let text = `Reviews for ${product?.brand} (${product?.rating}/5, ${product?.reviews?.toLocaleString()} ratings):\n`;
+    let text = `Reviews for ${product.brand} ${product.name}:\n`;
     for (const r of reviewData) {
-      text += `\n${"\u2605".repeat(r.rating)}${"\u2606".repeat(5 - r.rating)} ${r.title}`;
+      text += `\n${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} ${r.title}`;
       text += `\n  by ${r.author}${r.verified_purchase ? " (Verified Purchase)" : ""}`;
       text += `\n  ${r.body}`;
       text += `\n  ${r.helpful_votes} people found this helpful\n`;
@@ -327,49 +493,25 @@ function executeReadReviews(args: Record<string, any>, ctx: ToolContext): string
   }
 
   if (ctx.inputMode === "html" || ctx.inputMode === "screenshot") {
-    const reviewCards = reviewData.map((r) => `
-      <div style="padding:12px 0;border-bottom:1px solid #eee;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-          <div style="width:28px;height:28px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#6b7280;">${r.author[0]}</div>
-          <span style="font-size:12px;font-weight:500;color:#374151;">${r.author}</span>
-          ${r.verified_purchase ? '<span style="font-size:10px;background:#ecfdf5;color:#047857;padding:2px 6px;border-radius:4px;">\u2713 Verified</span>' : ""}
-        </div>
-        <div style="color:#f59e0b;font-size:12px;">${"\u2605".repeat(r.rating)}${"\u2606".repeat(5 - r.rating)} <strong style="color:#1f2937;">${r.title}</strong></div>
-        <p style="font-size:13px;color:#4b5563;margin:6px 0;line-height:1.5;">${r.body}</p>
-        <p style="font-size:11px;color:#9ca3af;">${r.helpful_votes} people found this helpful</p>
-      </div>`).join("");
-
-    return `<style>.review-page{max-width:700px;font-family:Arial,sans-serif;background:#fff;padding:20px;}</style>
-<div class="review-page">
-  <div style="display:flex;align-items:center;gap:12px;padding-bottom:12px;border-bottom:2px solid #e5e7eb;margin-bottom:8px;">
-    <div style="font-size:32px;font-weight:bold;color:#111;">${product?.rating}</div>
-    <div>
-      <div style="color:#f59e0b;font-size:14px;">${"\u2605".repeat(Math.floor(product?.rating || 0))}${"\u2606".repeat(5 - Math.floor(product?.rating || 0))}</div>
-      <div style="font-size:12px;color:#6b7280;">${product?.reviews?.toLocaleString()} ratings \u00b7 ${sorted.length} reviews shown</div>
-    </div>
-  </div>
-  ${reviewCards}
-</div>`;
+    return reviewsPageHtml(product, reviewData);
   }
 
   return JSON.stringify({
-    product_id: args.product_id,
-    brand: product?.brand,
-    average_rating: product?.rating,
-    total_reviews: product?.reviews,
+    product_id: product.id,
+    brand: product.brand,
+    name: product.name,
     showing: sorted.length,
     reviews: reviewData,
   }, null, 2);
 }
 
-// ── select_product ──
 function executeSelect(args: Record<string, any>, ctx: ToolContext): string {
-  const product = ctx.shuffledProducts.find((p) => p.id === args.product_id)
-    || PRODUCTS.find((p) => p.id === args.product_id);
+  const product = resolveProduct(args, ctx);
   return JSON.stringify({
     status: "purchased",
-    product_id: args.product_id,
-    brand: product?.brand || "Unknown",
+    product_id: product?.id ?? 0,
+    brand: product?.brand || args.brand || "Unknown",
     reasoning: args.reasoning || "",
+    resolved_from: args.product_id != null ? "product_id" : (args.brand ? "brand" : "unknown"),
   });
 }

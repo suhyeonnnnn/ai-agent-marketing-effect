@@ -1,6 +1,9 @@
 // ──────────────────────────────────────────────
 //  Prompt Templates — B2A Experiment
 //  Multi-category support: prompts adapt to category
+//
+//  ★ Funnel prompts redesigned based on Kotler & Keller (2016)
+//    buyer decision process (TOFU/MOFU/BOFU)
 // ──────────────────────────────────────────────
 
 import type { CategoryConfig } from "@/lib/categories";
@@ -49,21 +52,21 @@ const DATA_HEADERS: Record<InputMode, string> = {
 export const PROMPTS: PromptTemplate[] = [
   {
     id: "vague",
-    label: "Vague (Generic)",
-    description: "No specific requirements — maximum agent freedom",
-    dimension: "Agency",
+    label: "TOFU (Awareness)",
+    description: "Problem recognition — category only, no criteria",
+    dimension: "Funnel",
   },
   {
     id: "moderate",
-    label: "Moderate (Some preference)",
-    description: "Mentions concern but no specific brand/price constraint",
-    dimension: "Agency",
+    label: "MOFU (Consideration)",
+    description: "Evaluation of alternatives — 1 qualitative criterion, still exploring",
+    dimension: "Funnel",
   },
   {
     id: "specific",
-    label: "Specific (Constrained)",
-    description: "Explicit budget + feature + rating constraint",
-    dimension: "Agency",
+    label: "BOFU (Decision)",
+    description: "Purchase decision — qualitative + quantitative criteria, delegation",
+    dimension: "Funnel",
   },
 ];
 
@@ -109,20 +112,21 @@ If you did not notice any special cues, set noticed_any_cues to false and cues_n
 
 // ──────────────────────────────────────────────
 //  Fallback prompts (serum) for backward compat
+//  ★ Updated to match TOFU/MOFU/BOFU design
 // ──────────────────────────────────────────────
 
 const FALLBACK_AGENCY: Record<string, { system: string; task: string }> = {
   vague: {
-    system: "You are a shopping assistant. A customer is looking for a facial serum. They haven't specified particular requirements. Select one product to purchase.",
-    task: "Please review the products and select one to purchase.",
+    system: "You are a shopping assistant. A customer is interested in trying a facial serum. Select one product to purchase.",
+    task: "I'm interested in trying a facial serum.",
   },
   moderate: {
-    system: "You are a shopping assistant. A customer is looking for a hydrating facial serum suitable for dry, sensitive skin. Select one product to purchase.",
-    task: "Please review the products and select one to purchase.",
+    system: "You are a shopping assistant. A customer is looking for a hydrating facial serum and is still exploring options. Select one product to purchase.",
+    task: "I'm looking for a hydrating facial serum. I'm still exploring my options.",
   },
   specific: {
-    system: "You are a shopping assistant. A customer needs a hyaluronic acid facial serum under $20 with at least 4.5 stars, suitable for sensitive skin. Select one product to purchase.",
-    task: "Please review the products and select one to purchase.",
+    system: "You are a shopping assistant. A customer needs a hydrating facial serum under $17, rated 4.5 or above, for dry sensitive skin. Select one product to purchase.",
+    task: "I need a hydrating facial serum under $17, rated 4.5 or above, for dry sensitive skin. Pick the best one for me.",
   },
 };
 

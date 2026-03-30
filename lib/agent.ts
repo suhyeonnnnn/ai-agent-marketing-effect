@@ -1,8 +1,16 @@
 // ──────────────────────────────────────────────
 //  Multi-step Agent Runner — Study 2
 //  Runs tool-use loop with OpenAI or Anthropic
+//
+//  ★ Tools accept brand name OR product_id for product identification.
+//    This ensures screenshot mode works correctly since rendered images
+//    don't show numeric product IDs.
+//    The executor (tools.ts) resolves brand → product_id via fuzzy matching.
+//    agent.ts extracts the resolved product_id from the executor's JSON result.
 // ──────────────────────────────────────────────
 
+import fs from "fs";
+import path from "path";
 import {
   PRODUCTS, type Condition,
   shufflePositions, pickTargetProduct, generateSeed,
@@ -13,44 +21,90 @@ import {
   type ToolContext, type NudgeSurface,
 } from "./tools";
 
+// ── Screenshot saving ──
+function saveScreenshot(base64: string, trialId: number, step: number, toolName: string, categoryId: string, condition: string): string {
+  const runId = process.env.RUN_ID || "260314_1";
+  const ssDir = path.join(process.cwd(), "results", runId, "study2", "screenshots");
+  try { fs.mkdirSync(ssDir, { recursive: true }); } catch {}
+  const filename = `s2_${categoryId}_${condition}_t${trialId}_step${step}_${toolName}.jpg`;
+  const filepath = path.join(ssDir, filename);
+  try {
+    fs.writeFileSync(filepath, Buffer.from(base64, "base64"));
+  } catch {}
+  return `results/${runId}/study2/screenshots/${filename}`;
+}
+
 // ── Screenshot rendering (lazy-loaded) ──
 let puppeteerBrowser: any = null;
 
-// Pre-fetch external images and inline them as base64 to bypass hotlink protection (e.g. Amazon CDN)
-async function inlineExternalImages(html: string): Promise<string> {
-  const imgRegex = /<img([^>]*?)src="(https?:\/\/[^"]+)"([^>]*?)>/g;
-  const matches = [...html.matchAll(imgRegex)];
-  let result = html;
-  await Promise.all(matches.map(async (match) => {
+function resolveLocalImages(html: string): string {
+  const publicDir = path.join(process.cwd(), "public");
+  return html.replace(/src="(\/images\/[^"]+)"/g, (match, p1) => {
+    const absPath = path.join(publicDir, p1);
     try {
-      const res = await fetch(match[2], {
-        headers: { "Referer": "https://www.amazon.com/", "User-Agent": "Mozilla/5.0" }
-      });
-      if (!res.ok) return;
-      const buf = await res.arrayBuffer();
-      const b64 = Buffer.from(buf).toString("base64");
-      const mime = res.headers.get("content-type") || "image/jpeg";
-      result = result.replace(match[2], `data:${mime};base64,${b64}`);
+      const buf = fs.readFileSync(absPath);
+      const b64 = buf.toString("base64");
+      return `src="data:image/jpeg;base64,${b64}"`;
     } catch {
-      // silently skip failed images
+      return match;
     }
-  }));
-  return result;
+  });
+}
+
+const IMAGE_LOG_PATH = path.join(process.cwd(), "results", process.env.RUN_ID || "260314_1", "image_verification.log");
+let imageCheckCount = 0;
+let imageFailCount = 0;
+
+function logImageCheck(msg: string) {
+  const ts = new Date().toISOString();
+  const line = `[${ts}] ${msg}\n`;
+  try { fs.mkdirSync(path.dirname(IMAGE_LOG_PATH), { recursive: true }); } catch {}
+  try { fs.appendFileSync(IMAGE_LOG_PATH, line); } catch {}
 }
 
 async function renderToScreenshot(htmlContent: string): Promise<string> {
   if (!puppeteerBrowser) {
-    // @ts-ignore - puppeteer not available in Vercel environment
+    // @ts-ignore
     const puppeteer = await import("puppeteer");
-    puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox"] });
+    puppeteerBrowser = await (puppeteer as any).default.launch({ headless: "new", args: ["--no-sandbox", "--allow-file-access-from-files"] });
   }
-  // Inline external images as base64 to avoid hotlink blocking
-  const inlinedHtml = await inlineExternalImages(htmlContent);
+  const resolvedHtml = resolveLocalImages(htmlContent);
+
+  const b64Count = (resolvedHtml.match(/src="data:image\/jpeg;base64,/g) || []).length;
+  const unresolvedCount = (resolvedHtml.match(/src="\/images\/products\/[^"]+"/g) || []).length;
+  if (unresolvedCount > 0) {
+    logImageCheck(`⚠️ UNRESOLVED: ${unresolvedCount} images still have /images/ paths (${b64Count} resolved)`);
+  }
+
   const page = await puppeteerBrowser.newPage();
-  await page.setViewport({ width: 1200, height: 800 });
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:16px;background:#fff;font-family:Arial,sans-serif;">${inlinedHtml}</body></html>`;
+  await page.setViewport({ width: 600, height: 450 });
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:12px;background:#fff;font-family:Arial,sans-serif;">${resolvedHtml}</body></html>`;
   await page.setContent(fullHtml, { waitUntil: "networkidle0", timeout: 15000 }).catch(() => {});
-  const screenshot = await page.screenshot({ type: "jpeg", quality: 85, fullPage: true });
+
+  imageCheckCount++;
+  const imgStatus = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll("img")).map(img => ({
+      ok: img.naturalWidth > 0,
+      alt: img.alt?.substring(0, 40) || "no-alt",
+    }));
+  });
+  const totalImgs = imgStatus.length;
+  const loadedImgs = imgStatus.filter((i: any) => i.ok).length;
+  const failedImgs = imgStatus.filter((i: any) => !i.ok);
+
+  if (failedImgs.length > 0) {
+    imageFailCount++;
+    const failNames = failedImgs.map((i: any) => i.alt).join(", ");
+    logImageCheck(`❌ FAILED: ${failedImgs.length}/${totalImgs} images not loaded [${failNames}]`);
+    console.error(`  ❌ IMAGE FAIL: ${failedImgs.length}/${totalImgs} images not loaded (check ${IMAGE_LOG_PATH})`);
+  } else if (imageCheckCount % 100 === 0) {
+    logImageCheck(`✅ CHECK #${imageCheckCount}: ${loadedImgs}/${totalImgs} images OK (${imageFailCount} total failures so far)`);
+  }
+  if (imageCheckCount === 1) {
+    logImageCheck(`✅ FIRST SCREENSHOT: ${loadedImgs}/${totalImgs} images loaded, b64=${b64Count}, unresolved=${unresolvedCount}`);
+  }
+
+  const screenshot = await page.screenshot({ type: "jpeg", quality: 50, fullPage: true });
   await page.close();
   return screenshot.toString("base64");
 }
@@ -59,7 +113,7 @@ export async function closeBrowser() {
   if (puppeteerBrowser) { await puppeteerBrowser.close(); puppeteerBrowser = null; }
 }
 
-const MAX_STEPS = 30;
+const MAX_STEPS = 15;
 
 // ──────────────────────────────────────────────
 //  Types
@@ -79,12 +133,10 @@ export interface Study2Result {
   model: string;
   temperature: number;
   seed: number;
-  // Target
   targetProductId: number;
   targetBrand: string;
   targetPosition: number;
   positionOrder: number[];
-  // Choice
   chosenProductId: number;
   chosenBrand: string;
   chosenPrice: number;
@@ -92,21 +144,18 @@ export interface Study2Result {
   chosenRating: number;
   choseTarget: boolean;
   reasoning: string;
-  // Prompts (raw)
   systemPrompt: string;
   userPrompt: string;
   rawMessages: any[];
-  // Trajectory
   toolCalls: ToolCall[];
   totalSteps: number;
   productsViewed: number[];
   reviewsRead: number[];
   filtersUsed: Record<string, any>[];
-  // Funnel metrics
   attentionActions: number;
   considerationActions: number;
   selectionActions: number;
-  // Cost
+  screenshotPaths: string[];
   latencySec: number;
   inputTokens: number;
   outputTokens: number;
@@ -118,15 +167,27 @@ export interface Study2Result {
 //  System Prompt
 // ──────────────────────────────────────────────
 
-// Study 2 System Prompt — fixed across all categories and conditions
-// Matches Study 1 role definition + tool-use instructions
+// ★ Updated: select_product accepts brand name (not just product_id)
 const STUDY2_SYSTEM_PROMPT = `You are a shopping assistant. Based on the customer's request, select one product.
 
-You have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product(product_id, reasoning).
+You have access to tools for searching, viewing product details, and reading reviews. Use them to explore the available products, then finalize your choice by calling select_product with the product's brand name and your reasoning.
 
 Rules:
 - You must use at least one tool call per response.
 - When you have decided, call select_product() to complete the purchase. Do not state your choice in plain text.`;
+
+// ──────────────────────────────────────────────
+//  Helper: extract resolved product_id from tool result JSON
+// ──────────────────────────────────────────────
+
+function extractProductIdFromResult(result: string): number {
+  try {
+    const parsed = JSON.parse(result);
+    return parsed.product_id ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 // ──────────────────────────────────────────────
 //  Main Runner
@@ -142,12 +203,11 @@ export async function runStudy2Trial(
   onStep?: (step: ToolCall) => void,
   apiKeys: { openai: string; anthropic: string; gemini: string } = { openai: "", anthropic: "", gemini: "" },
   categoryId: string = "serum",
-  agency: string = "moderate",  // ★ NEW: agency level for Study 2
+  agency: string = "moderate",
 ): Promise<Study2Result> {
   const start = Date.now();
   const seed = generateSeed(trialId);
 
-  // Resolve category products
   let categoryProducts: any[];
   try {
     const { CATEGORIES } = await import("./categories");
@@ -163,7 +223,6 @@ export async function runStudy2Trial(
   const targetProduct = categoryProducts.find((p: any) => p.id === targetProductId)!;
   const targetPosition = positionOrder.indexOf(targetProductId) + 1;
 
-  // Resolve category marketing cues
   let catMarketing: any = undefined;
   try {
     const { CATEGORIES } = await import("./categories");
@@ -172,35 +231,27 @@ export async function runStudy2Trial(
   } catch {}
 
   const toolCtx: ToolContext = {
-    condition,
-    targetProductId,
-    shuffledProducts: shuffled,
-    seed,
-    nudgeSurfaces,
-    inputMode,
-    categoryId,
-    catMarketing,
-
+    condition, targetProductId, shuffledProducts: shuffled,
+    seed, nudgeSurfaces, inputMode, categoryId, catMarketing,
   };
 
   const isAnthropic = model.startsWith("claude");
   const isGemini = model.startsWith("gemini");
-  const useAnthropicStyle = isAnthropic || isGemini; // Both use content array format
+  const useAnthropicStyle = isAnthropic || isGemini;
   const toolCalls: ToolCall[] = [];
   const productsViewed = new Set<number>();
   const reviewsRead = new Set<number>();
-
 
   let chosenProductId = 0;
   let reasoning = "";
   let totalInput = 0;
   let totalOutput = 0;
   const filtersUsed: Record<string, any>[] = [];
-  let pendingScreenshots: string[] | null = null;
+  let pendingScreenshots: { html: string; step: number; tool: string }[] | null = null;
+  const screenshotPaths: string[] = [];
 
-  // Build prompts: system is fixed, user prompt comes from category agencyPrompts (same as Study 1)
   const SYSTEM_PROMPT = STUDY2_SYSTEM_PROMPT;
-  let USER_PROMPT = "I'd like to buy something. Please find one and make a purchase."; // fallback
+  let USER_PROMPT = "I'd like to buy something. Please find one and make a purchase.";
   try {
     const { CATEGORIES } = await import("./categories");
     const cat = CATEGORIES[categoryId as keyof typeof CATEGORIES];
@@ -210,7 +261,6 @@ export async function runStudy2Trial(
     }
   } catch {}
 
-  // Build initial messages
   const messages: any[] = [];
   if (!useAnthropicStyle) {
     messages.push({ role: "system", content: SYSTEM_PROMPT });
@@ -218,7 +268,6 @@ export async function runStudy2Trial(
   messages.push({ role: "user", content: USER_PROMPT });
 
   for (let step = 1; step <= MAX_STEPS; step++) {
-    // Call model
     let response: ModelResponse;
     if (isAnthropic) {
       response = await callAnthropic(model, SYSTEM_PROMPT, messages, temperature, apiKeys.anthropic);
@@ -232,17 +281,14 @@ export async function runStudy2Trial(
     totalOutput += response.outputTokens;
 
     if (response.toolCalls.length === 0) {
-      // Model responded with text only — try to extract product choice from text
       const textContent = useAnthropicStyle
         ? (response.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ")
         : response.assistantMessage?.content || "";
 
-      // Try to parse product ID from text response
       const parsed = parseProductFromText(textContent, categoryProducts);
       if (parsed.productId > 0) {
         chosenProductId = parsed.productId;
         reasoning = parsed.reasoning || textContent.slice(0, 300);
-        // Record as a synthetic select_product call
         const syntheticCall: ToolCall = {
           step, tool: "select_product",
           args: { product_id: chosenProductId, reasoning },
@@ -259,13 +305,11 @@ export async function runStudy2Trial(
       } else {
         messages.push(response.assistantMessage);
       }
-      // Always nudge when model responds with text instead of tools
-      const nudgeMsg = { role: "user" as const, content: "Please use a tool call to proceed. When ready, call select_product(product_id, reasoning) to finalize." };
-      messages.push(nudgeMsg);
+      messages.push({ role: "user" as const, content: "Please use a tool call to proceed. When ready, call select_product() with the brand name and your reasoning to finalize." });
       continue;
     }
 
-    // Process tool calls
+    // ── Process tool calls ──
     if (useAnthropicStyle) {
       messages.push({ role: "assistant", content: response.content });
       const toolResults: any[] = [];
@@ -276,19 +320,23 @@ export async function runStudy2Trial(
         toolCalls.push(call);
         onStep?.(call);
 
-        trackAction(tc.name, tc.args, productsViewed, reviewsRead, filtersUsed);
+        // ★ Track using resolved product_id from result, not from args
+        const resolvedId = extractProductIdFromResult(result);
+        trackAction(tc.name, resolvedId, productsViewed, reviewsRead);
 
         if (tc.name === "select_product") {
-          chosenProductId = tc.args.product_id;
+          // ★ Get product_id from executor result (resolved from brand)
+          chosenProductId = resolvedId;
           reasoning = tc.args.reasoning || "";
         }
 
-        // Screenshot mode: render HTML tool results as images
         if (inputMode === "screenshot" && tc.name !== "select_product" && result.includes("<")) {
           const base64 = await renderToScreenshot(result);
+          const ssPath = saveScreenshot(base64, trialId, step, tc.name, categoryId, condition);
+          screenshotPaths.push(ssPath);
           toolResults.push({
             type: "tool_result", tool_use_id: tc.id,
-            content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } }, { type: "text", text: `[Screenshot of ${tc.name} result]` }],
+            content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } }, { type: "text", text: `[${tc.name} result rendered as screenshot]` }],
           });
         } else {
           toolResults.push({ type: "tool_result", tool_use_id: tc.id, content: result });
@@ -304,31 +352,34 @@ export async function runStudy2Trial(
         toolCalls.push(call);
         onStep?.(call);
 
-        trackAction(tc.name, tc.args, productsViewed, reviewsRead, filtersUsed);
+        // ★ Track using resolved product_id from result
+        const resolvedId = extractProductIdFromResult(result);
+        trackAction(tc.name, resolvedId, productsViewed, reviewsRead);
 
         if (tc.name === "select_product") {
-          chosenProductId = tc.args.product_id;
+          // ★ Get product_id from executor result (resolved from brand)
+          chosenProductId = resolvedId;
           reasoning = tc.args.reasoning || "";
         }
 
-        // Screenshot mode for OpenAI: tool response MUST come right after tool_calls
-        // So we put the tool result text first, then append image as a follow-up user message
-        messages.push({ role: "tool", tool_call_id: tc.id, content: result });
         if (inputMode === "screenshot" && tc.name !== "select_product" && result.includes("<")) {
-          // Will batch all screenshots and send after all tool responses
+          messages.push({ role: "tool", tool_call_id: tc.id, content: `[${tc.name} result rendered as screenshot below]` });
           if (!pendingScreenshots) pendingScreenshots = [];
-          pendingScreenshots.push(result);
+          pendingScreenshots.push({ html: result, step, tool: tc.name });
+        } else {
+          messages.push({ role: "tool", tool_call_id: tc.id, content: result });
         }
       }
 
-      // After all tool responses, send pending screenshots as user message
       if (pendingScreenshots && pendingScreenshots.length > 0) {
         const imageContent: any[] = [];
-        for (const html of pendingScreenshots) {
-          const base64 = await renderToScreenshot(html);
+        for (const ss of pendingScreenshots) {
+          const base64 = await renderToScreenshot(ss.html);
+          const ssPath = saveScreenshot(base64, trialId, ss.step, ss.tool, categoryId, condition);
+          screenshotPaths.push(ssPath);
           imageContent.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } });
         }
-        imageContent.push({ type: "text", text: "Above are screenshots of the tool results. Use them to make your decision." });
+        imageContent.push({ type: "text", text: "Above are the rendered tool results." });
         messages.push({ role: "user", content: imageContent });
         pendingScreenshots = null;
       }
@@ -341,15 +392,8 @@ export async function runStudy2Trial(
   const funnel = classifyFunnel(toolCalls);
 
   return {
-    trialId,
-    condition,
-    model,
-    temperature,
-    seed,
-    targetProductId,
-    targetBrand: targetProduct.brand,
-    targetPosition,
-    positionOrder,
+    trialId, condition, model, temperature, seed,
+    targetProductId, targetBrand: targetProduct.brand, targetPosition, positionOrder,
     chosenProductId,
     chosenBrand: chosenProduct?.brand || "Unknown",
     chosenPrice: chosenProduct?.price ?? 0,
@@ -357,18 +401,15 @@ export async function runStudy2Trial(
     chosenRating: chosenProduct?.rating ?? 0,
     choseTarget: chosenProductId === targetProductId,
     reasoning,
-    systemPrompt: SYSTEM_PROMPT,
-    userPrompt: USER_PROMPT,
-    rawMessages: messages,
-    toolCalls,
-    totalSteps: toolCalls.length,
+    systemPrompt: SYSTEM_PROMPT, userPrompt: USER_PROMPT, rawMessages: messages,
+    toolCalls, totalSteps: toolCalls.length,
     productsViewed: Array.from(productsViewed),
     reviewsRead: Array.from(reviewsRead),
     filtersUsed,
     ...funnel,
+    screenshotPaths,
     latencySec: Math.round((Date.now() - start) / 100) / 10,
-    inputTokens: totalInput,
-    outputTokens: totalOutput,
+    inputTokens: totalInput, outputTokens: totalOutput,
     estimatedCostUsd: estimateCost(model, totalInput, totalOutput),
     timestamp: new Date().toISOString(),
   };
@@ -378,29 +419,27 @@ export async function runStudy2Trial(
 //  Action Tracking
 // ──────────────────────────────────────────────
 
+// ★ Changed: takes resolved product_id (from executor result), not raw args
 function trackAction(
   tool: string,
-  args: Record<string, any>,
+  resolvedProductId: number,
   productsViewed: Set<number>,
   reviewsRead: Set<number>,
-  filtersUsed: Record<string, any>[],
 ) {
-  if (tool === "view_product") productsViewed.add(args.product_id);
-  if (tool === "read_reviews") reviewsRead.add(args.product_id);
+  if (resolvedProductId <= 0) return;
+  if (tool === "view_product") productsViewed.add(resolvedProductId);
+  if (tool === "read_reviews") reviewsRead.add(resolvedProductId);
 }
 
 // ── Fallback: parse product choice from text response ──
 function parseProductFromText(text: string, products?: any[]): { productId: number; reasoning: string } {
-  // Try to find product_id mention
   const idMatch = text.match(/product[_\s]?(?:id)?[:\s]*(?:#)?(\d)/i);
   if (idMatch) return { productId: parseInt(idMatch[1]), reasoning: text.slice(0, 300) };
 
-  // Build brand patterns from provided products (supports any category)
   const brandPatterns = (products || PRODUCTS).map((p: any) => ({ brand: p.brand, id: p.id }));
-
-  // Try brand name matching
   const lowerText = text.toLowerCase();
   const decisionWords = /(?:recommend|choose|select|pick|buy|purchase|go with|best choice|my choice|final choice|would suggest|top pick|winner|ideal)/i;
+
   for (const { brand, id } of brandPatterns) {
     if (lowerText.includes(brand.toLowerCase())) {
       const brandIdx = lowerText.indexOf(brand.toLowerCase());
@@ -411,13 +450,11 @@ function parseProductFromText(text: string, products?: any[]): { productId: numb
     }
   }
 
-  // Fallback: if only one brand is mentioned, assume it's the choice
   const mentionedBrands = brandPatterns.filter(({ brand }) => lowerText.includes(brand.toLowerCase()));
   if (mentionedBrands.length === 1) {
     return { productId: mentionedBrands[0].id, reasoning: text.slice(0, 300) };
   }
 
-  // Last resort: check if any brand appears at the end of text (conclusion position)
   if (mentionedBrands.length > 0) {
     const lastThird = lowerText.slice(-Math.floor(lowerText.length / 3));
     for (const { brand, id } of brandPatterns) {
@@ -436,7 +473,7 @@ function classifyFunnel(calls: ToolCall[]) {
   let selectionActions = 0;
   for (const c of calls) {
     if (c.tool === "search") attentionActions++;
-    else if (["view_product", "read_reviews", "add_to_cart"].includes(c.tool)) considerationActions++;
+    else if (["view_product", "read_reviews"].includes(c.tool)) considerationActions++;
     else if (c.tool === "select_product") selectionActions++;
   }
   return { attentionActions, considerationActions, selectionActions };
@@ -448,8 +485,8 @@ function classifyFunnel(calls: ToolCall[]) {
 
 interface ModelResponse {
   toolCalls: { id: string; name: string; args: Record<string, any> }[];
-  content: any; // raw content for Anthropic
-  assistantMessage: any; // raw message for OpenAI
+  content: any;
+  assistantMessage: any;
   inputTokens: number;
   outputTokens: number;
 }
@@ -472,9 +509,7 @@ async function callOpenAI(model: string, messages: any[], temperature: number, a
   }));
 
   return {
-    toolCalls,
-    content: null,
-    assistantMessage: msg,
+    toolCalls, content: null, assistantMessage: msg,
     inputTokens: data.usage?.prompt_tokens ?? 0,
     outputTokens: data.usage?.completion_tokens ?? 0,
   };
@@ -499,15 +534,12 @@ async function callAnthropic(model: string, system: string, messages: any[], tem
     .map((c: any) => ({ id: c.id, name: c.name, args: c.input }));
 
   return {
-    toolCalls,
-    content: data.content,
-    assistantMessage: null,
+    toolCalls, content: data.content, assistantMessage: null,
     inputTokens: data.usage?.input_tokens ?? 0,
     outputTokens: data.usage?.output_tokens ?? 0,
   };
 }
 
-// Gemini tool definition format
 const TOOL_DEFINITIONS_GEMINI = [{
   functionDeclarations: TOOL_DEFINITIONS.map((t) => ({
     name: t.function.name,
@@ -518,12 +550,10 @@ const TOOL_DEFINITIONS_GEMINI = [{
 
 async function callGemini(model: string, system: string, messages: any[], temperature: number, apiKey = ""): Promise<ModelResponse> {
   const key = apiKey || process.env.GEMINI_API_KEY || "";
-  // Convert OpenAI-style messages to Gemini contents format
   const contents = messages
     .filter((m: any) => m.role !== "system")
     .map((m: any) => {
       if (m.role === "user") {
-        // Handle tool results sent as user messages (Anthropic style)
         if (Array.isArray(m.content) && m.content[0]?.type === "tool_result") {
           return {
             role: "function" as const,
@@ -539,7 +569,6 @@ async function callGemini(model: string, system: string, messages: any[], temper
         return { role: "user" as const, parts: [{ text }] };
       }
       if (m.role === "assistant") {
-        // Check for function calls in assistant content
         if (Array.isArray(m.content)) {
           const parts: any[] = [];
           for (const block of m.content) {
@@ -594,7 +623,6 @@ async function callGemini(model: string, system: string, messages: any[], temper
       args: p.functionCall.args || {},
     }));
 
-  // Build content in Anthropic format for message history
   const content = parts.map((p: any) => {
     if (p.functionCall) return { type: "tool_use", id: `gemini_${p.functionCall.name}`, name: p.functionCall.name, input: p.functionCall.args || {} };
     return { type: "text", text: p.text || "" };
@@ -602,9 +630,7 @@ async function callGemini(model: string, system: string, messages: any[], temper
 
   const usage = data.usageMetadata ?? {};
   return {
-    toolCalls,
-    content,
-    assistantMessage: null,
+    toolCalls, content, assistantMessage: null,
     inputTokens: usage.promptTokenCount ?? 0,
     outputTokens: usage.candidatesTokenCount ?? 0,
   };

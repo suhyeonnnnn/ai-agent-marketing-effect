@@ -1,0 +1,103 @@
+════════════════════════════════════════════════════════════════
+  B2A Experiment — Pilot Run Settings
+  2026-03-23
+════════════════════════════════════════════════════════════════
+
+1. PILOT CONFIGURATION
+───────────────────────────────────────────────────────────────
+  Category        serum (1개만)
+  REPS            1
+  Conditions      8  (control + 7 nudges)
+  Funnels         3  (vague / moderate / specific)
+  Input modes     4  (text_json, text_flat, html, screenshot)
+  Trials/study    8 × 3 × 4 × 1 = 96
+  Model           gpt-4o-mini
+  Temperature     1.0
+  MAX_STEPS (S2)  15
+  Screenshot      600×450, JPEG q50 (S1=S2 통일)
+  RUN_ID          260314_1
+  Concurrency     8
+
+
+2. COST ESTIMATION
+───────────────────────────────────────────────────────────────
+  gpt-4o-mini pricing:
+    Input:  $0.15 / 1M tokens
+    Output: $0.60 / 1M tokens
+
+  Study 1 (one-shot, 96 trials)
+  ─────────────────────────────
+    Mode          Input tok/trial   Output tok/trial
+    text_json     ~1,500            ~200
+    text_flat     ~1,200            ~200
+    html          ~2,500            ~200
+    screenshot    ~2,500 (img incl) ~200
+    Average       ~1,800            ~200
+
+    Cost/trial = 1,800 × $0.00015/1K + 200 × $0.0006/1K
+               = $0.00027 + $0.00012 = $0.00039
+
+    96 trials × $0.00039 ≈ $0.04
+
+  Study 2 (multi-step agent, 96 trials)
+  ──────────────────────────────────────
+    Avg 5 steps per trial, cumulative context:
+    Step 1:  ~500 input,   ~100 output
+    Step 2:  ~1,500 input, ~100 output
+    Step 3:  ~3,000 input, ~100 output
+    Step 4:  ~5,000 input, ~100 output
+    Step 5:  ~7,000 input, ~100 output (select)
+    Total:   ~17,000 input, ~500 output per trial
+
+    Text modes (72 trials):
+      72 × (17,000 × $0.00015/1K + 500 × $0.0006/1K)
+      = 72 × $0.00285 = $0.21
+
+    Screenshot mode (24 trials, image tokens add ~8,000):
+      24 × (25,000 × $0.00015/1K + 500 × $0.0006/1K)
+      = 24 × $0.00405 = $0.10
+
+    Study 2 total ≈ $0.31
+
+  ┌─────────────┬─────────┬──────────┐
+  │             │ Trials  │ Est cost │
+  ├─────────────┼─────────┼──────────┤
+  │ Study 1     │ 96      │ ~$0.04   │
+  │ Study 2     │ 96      │ ~$0.31   │
+  ├─────────────┼─────────┼──────────┤
+  │ TOTAL       │ 192     │ ~$0.35   │
+  └─────────────┴─────────┴──────────┘
+
+
+3. COMMANDS
+───────────────────────────────────────────────────────────────
+  # Terminal 1: start server
+  cd ~/Downloads/b2a-experiment && npm run dev
+
+  # Terminal 2: Study 1 pilot
+  node scripts/run-study1.mjs serum
+
+  # Terminal 3: Study 2 pilot
+  node scripts/run-study2.mjs serum
+
+
+4. CHECKLIST (파일럿 후 검증)
+───────────────────────────────────────────────────────────────
+  [ ] Control hit rate ≈ 12.5% (1/8)?
+  [ ] 가상 브랜드명 (Veladerm 등) 정상 출력?
+  [ ] TOFU/MOFU/BOFU 프롬프트 정확?
+  [ ] Brand resolve 작동? (S2 — resolved_from 필드)
+  [ ] MAX_STEPS=15 안에서 종료?
+  [ ] chosenProductId ≠ 0 (파싱 실패 없음)?
+  [ ] 4개 input mode 모두 정상 동작?
+  [ ] Screenshot 이미지 정상 렌더링? (image_verification.log)
+
+
+5. FULL RUN COST PROJECTION (참고)
+───────────────────────────────────────────────────────────────
+  Full: 8 cond × 3 funnel × 4 mode × 32 reps × 4 categories
+      = 12,288 trials per study
+
+  Study 1: 12,288 × $0.00039 ≈ $4.80
+  Study 2: 12,288 × $0.00325 ≈ $40
+  Total (both studies): ~$45

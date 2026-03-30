@@ -4,3 +4,6 @@ node_modules/
 *.tsbuildinfo
 results/
 data/amazon_meta/*.jsonl
+data/human/*.jsonl
+data/human/parsed/
+!data/human/.gitkeep

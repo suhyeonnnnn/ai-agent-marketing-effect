@@ -59,7 +59,7 @@ function BadgeTag({ text, condition }: { text: string; condition?: string }) {
     condition?.startsWith("authority") ? "bg-blue-600 text-white" :
     condition === "price_anchoring" ? "bg-green-600 text-white" :
     "bg-gray-700 text-white";
-  return <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded ${colorCls}`}>{text}</span>;
+  return <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded ${colorCls}`}>{text}</span>;
 }
 
 function MockProductGrid({ condition, targetId, positionOrder, chosenId, category }: {
@@ -78,7 +78,7 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId, categor
         <span className="text-sm font-bold tracking-tight">ShopSmart</span>
         <div className="flex-1 bg-gray-800 rounded-md px-3 py-1.5 text-xs text-gray-400 flex items-center gap-1.5">
           <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          {category?.searchQuery || "hydrating facial serum"}
+          {category?.searchQuery || category?.label || "Facial Serum"}
         </div>
         <div className="flex items-center gap-3 text-gray-400">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
@@ -89,21 +89,15 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId, categor
         </div>
       </div>
 
-      {/* Breadcrumb */}
-      <div className="flex items-center justify-between mb-3 text-xs">
-        <span className="text-gray-700 font-medium">Search Results</span>
-        <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{condition}</span>
-      </div>
-
       {/* Results info */}
       <div className="flex items-center gap-2 mb-3 text-xs text-gray-500">
         <span>{ordered.length} results</span>
         <span className="text-gray-300">|</span>
-        <span>Sort: <span className="text-gray-700 font-medium">recommended</span></span>
+        <span>Sort: <span className="text-gray-700 font-medium">Recommended</span></span>
       </div>
 
       {/* Product grid 4×2 */}
-      <div className="grid grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-4 gap-3">
         {ordered.map((p) => {
           const isTarget = p.id === targetId;
           const isChosen = p.id === chosenId;
@@ -114,7 +108,7 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId, categor
 
           return (
             <div key={p.id}
-              className={`bg-white rounded-lg border p-2.5 relative transition-shadow hover:shadow-sm
+              className={`bg-white rounded-lg border p-3 relative transition-shadow hover:shadow-sm
                 ${isChosen ? "ring-2 ring-blue-500 shadow-md" : ""}`}>
               {isChosen && (
                 <div className="absolute -top-1.5 -right-1.5 flex items-center gap-0.5 bg-blue-500 text-white text-[9px] font-bold pl-1.5 pr-2 py-0.5 rounded-full shadow">
@@ -123,16 +117,16 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId, categor
                 </div>
               )}
               {/* Image */}
-              <div className="w-full h-24 rounded-md flex items-center justify-center mb-2 bg-gray-50 overflow-hidden">
+              <div className="w-full h-28 rounded-md flex items-center justify-center mb-2 bg-gray-50 overflow-hidden">
                 <img src={p.image} alt={p.name} className="h-full object-contain" onError={(e) => { const img = e.target as HTMLImageElement; img.style.display = 'none'; const parent = img.parentElement; if (parent) parent.innerHTML = `<span class="text-2xl">${EMOJIS[p.id] || '📦'}</span>`; }} />
               </div>
               {/* Info */}
               <p className="text-[10px] text-gray-400 uppercase tracking-wide">{p.brand}</p>
-              <p className="text-[11px] font-medium text-gray-800 leading-snug mt-0.5 line-clamp-2">{p.name}</p>
+              <p className="text-xs font-medium text-gray-800 leading-snug mt-0.5 line-clamp-2">{p.name}</p>
               <div className="mt-1">
                 <span className="flex items-center gap-0.5">
                   {[1,2,3,4,5].map(s => (
-                    <svg key={s} viewBox="0 0 20 20" className={`w-2.5 h-2.5 ${s <= Math.floor(p.rating) ? "text-yellow-400" : "text-gray-200"}`} fill="currentColor">
+                    <svg key={s} viewBox="0 0 20 20" className={`w-3 h-3 ${s <= Math.floor(p.rating) ? "text-yellow-400" : "text-gray-200"}`} fill="currentColor">
                       <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
                     </svg>
                   ))}
@@ -140,13 +134,13 @@ function MockProductGrid({ condition, targetId, positionOrder, chosenId, categor
                   <span className="text-[10px] text-blue-600 ml-0.5">({p.reviews.toLocaleString()})</span>
                 </span>
               </div>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-[13px] font-bold text-gray-900">${price.toFixed(2)}</span>
+              <div className="mt-1.5 flex items-baseline gap-1.5">
+                <span className="text-sm font-bold text-gray-900">${price.toFixed(2)}</span>
                 {isPriceAnchoring && <span className="text-[10px] text-gray-400 line-through">${anchoringOriginalPrice.toFixed(2)}</span>}
                 {isPriceAnchoring && <span className="text-[9px] font-semibold text-green-600 bg-green-50 px-1 py-0.5 rounded">Save {Math.round((1 - p.price / anchoringOriginalPrice) * 100)}%</span>}
               </div>
               {showBadge && (
-                <div className="mt-1.5"><BadgeTag condition={condition} text={`${condition === "scarcity" ? "🔥" : condition?.startsWith("social_proof") ? "👥" : condition === "urgency" ? "⏰" : condition?.startsWith("authority") ? "🏆" : condition === "price_anchoring" ? "💰" : ""} ${getCategoryBadge(condition, condMeta, category, p)}`} /></div>
+                <div className="mt-1.5"><BadgeTag condition={condition} text={`${condition === "scarcity" ? "🔥" : condition?.startsWith("social_proof") ? "👥" : condition === "urgency" ? "⏰" : condition?.startsWith("authority") ? "🏅" : condition === "price_anchoring" ? "💰" : ""} ${getCategoryBadge(condition, condMeta, category, p)}`} /></div>
               )}
               <div className="mt-1.5 text-[9px] text-green-600 font-medium">Free Shipping</div>
             </div>
