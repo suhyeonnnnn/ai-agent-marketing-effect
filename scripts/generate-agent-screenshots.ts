@@ -122,6 +122,7 @@ async function main() {
 
   // Step 2: Try Puppeteer rendering (may not be available)
   try {
+    // @ts-ignore
     const puppeteer = await import("puppeteer");
     const browser = await (puppeteer as any).default.launch({
       headless: "new",
